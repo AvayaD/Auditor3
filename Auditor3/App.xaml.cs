@@ -11,8 +11,10 @@ using System.Windows;
 using System.IO;
 using System;
 using Microsoft.Win32;
+using System.Runtime.Versioning;
 
 namespace Auditor3 {
+    [SupportedOSPlatform("windows")]
     public partial class App : Application {
         // Import DLL functionality
         [System.Runtime.InteropServices.DllImport("Shell32.dll")]
@@ -27,17 +29,19 @@ namespace Auditor3 {
             var appPath = AppDomain.CurrentDomain.BaseDirectory + "CorruptionAuditor.exe \"%1\"";
 
             // Check the registry and ensure we have the keys defined to associate .corr files to the auditor
-            if (Registry.GetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor", string.Empty, string.Empty) == null) {
-                Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor", "", "CorruptionAuditor");
-                Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command", "",
-                    appPath);
-                Registry.SetValue("HKEY_CLASSES_ROOT\\.corr", "", "CorruptionAuditor");
+            if (OperatingSystem.IsWindows()) {
+                if (Registry.GetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor", string.Empty, string.Empty) == null) {
+                    Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor", "", "CorruptionAuditor");
+                    Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command", "",
+                        appPath);
+                    Registry.SetValue("HKEY_CLASSES_ROOT\\.corr", "", "CorruptionAuditor");
 
-                SHChangeNotify(0x08000000, 0x2000, IntPtr.Zero, IntPtr.Zero);
-            } else if (Registry.GetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command",
-                  string.Empty, string.Empty).ToString() != appPath) {
-                Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command", "",
-                    appPath);
+                    SHChangeNotify(0x08000000, 0x2000, IntPtr.Zero, IntPtr.Zero);
+                } else if (Registry.GetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command",
+                      string.Empty, string.Empty).ToString() != appPath) {
+                    Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command", "",
+                        appPath);
+                }
             }
 
             // Declare the main window
