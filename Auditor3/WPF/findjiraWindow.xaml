@@ -1,0 +1,21 @@
+﻿<Window x:Class="Auditor3.findjiraWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d"
+        Title="findjira" SizeToContent="WidthAndHeight">
+    <Grid Style="{StaticResource StandardGrid}">
+        <StackPanel Style="{StaticResource StandardStackPanel}" Orientation="Vertical">
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="CODE CONTEXT" />
+                <TextBox Style="{StaticResource FixedTextBox}" Name="Context" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="JIRA" />
+                <TextBox Style="{StaticResource FixedTextBox}" Name="Jira" />
+            </StackPanel>            
+            <StackPanel Style="{StaticResource StandardStackPanel}" HorizontalAlignment="Center">
+                <Button Style="{StaticResource StandardButton}" Content="SEARCH" Click="Click_Search" />
+                <Button Style="{StaticResource StandardButton}" Content="CANCEL" Click="Click_Cancel" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

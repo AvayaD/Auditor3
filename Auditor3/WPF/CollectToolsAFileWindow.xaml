@@ -1,0 +1,21 @@
+﻿<Window x:Class="Auditor3.CollectToolsAFileWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d"
+        Title="ToolsA File" SizeToContent="WidthAndHeight">
+    <Grid Style="{StaticResource StandardGrid}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Label Style="{StaticResource StandardLabel}" Width="350" Content="Provide the filename and path on ToolsA" Grid.Row="0" />
+        <TextBox Style="{StaticResource FixedTextBox}" Width="350" Name="Filename" Grid.Row="1" />
+
+        <StackPanel Style="{StaticResource StandardStackPanel}" Grid.Row="3" HorizontalAlignment="Center">
+            <Button Style="{StaticResource StandardButton}" Content="OK" Click="Click_OK" />
+            <Button Style="{StaticResource StandardButton}" Content="CANCEL" Click="Click_Cancel" />
+        </StackPanel>
+
+    </Grid>
+</Window>

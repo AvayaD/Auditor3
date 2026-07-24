@@ -1,0 +1,87 @@
+Corruption Auditor 3.x Change Log
+
+Version 3.7
+===========
+
+PR_AMW update
+
+Version 3.6
+===========
+
+AUDITS: Moved AUDIT-S21 to top of the PR_PORT_UID station loop to detect abandoned records on first pass
+
+AUDIT-A11: Check for missing PR_AG_MBR records
+AUDIT-T07: Check PR_MOPORT for missing PR_PORT_UID
+AUDUT-T08: Check PR_PORT_UID for missing PR_MOPORT
+
+PREC: Added PR_AUDIO_GRP for announcements
+
+FEAT: CM 8.1 support
+FEAT: Wyld Stallyn Mode
+FEAT: Made PR_MOPORT adds TTI smart
+FEAT: Removed OSSI logout delay when not getting prompt
+
+BUG: Added softphone registered over AWOH DCP station detection
+
+Version 3.5
+===========
+
+BUG: Corrected a bug introduced  3.4 with detecting trunk group measurements state
+BUG: Skip empty lines when generating scripts
+
+FEAT: Force focus change when updating output/status box to ensure force scroll to bottom works everytime
+
+Version 3.4
+===========
+
+AUDITS: Re-enabled audits S02/S03/S06/S07 for CM8
+
+AUDIT-S30: Check for missing PR_MOBDs for TDM stations
+AUDIT-A10: This audit checks for duplicate PR_GM_IANC_BDs
+
+PREC: Added PR_MOBD to station audits
+
+FEAT: Added missing station mappings
+
+Version 3.3
+===========
+
+AUDITS: Disabled audits S02/S03/S06/S07 for CM8 due to nread change that is being corrected
+
+AUDIT-A08: This audit checks for mismatches in the AudioGroup value between PR_INT_ANNC and PR_AN_GRP
+AUDIT-A09: This audit checks PR_INT_ANNCs for missing PR_AN_GRPs
+
+PREC: Added PR_AN_GRP to announcement audits
+
+FEAT: Manual fixes now generate lists of UIDs / ports
+FEAT: Basic script generator that can take an input file of values (such as UIDs or ports) and create basic TCM commands using them
+
+Version 3.2
+===========
+
+AUDIT-S29: This audit checks for AWOH mismatches. There are a few scenarios, most of them require manual fixing by using a TCM buffer and flipping the bit, but there is one that is automatically fixed (TDM AWOH station that has an IP port).
+
+PREC: Added PR_TTISET to station audits
+
+FEAT: Added connection to DRCCD
+FEAT: Added hooks into David McNutt's script for searching Jira (jirasearchd)
+FEAT: Each PREC nread command is now attempted up to 3 times when failures are detected
+FEAT: Improved detection of when a PREC nread command fails
+FEAT: Added 'Reload Lab' option under Help to support updating changes without closing and reopening the auditor
+FEAT: General improvements
+
+Version 3.1
+===========
+
+BUG: Have likely fixed the CM 7.1/8.0 Collector issue. If you still see this issue crop up (new error message for it, see below), please provide me details on it. Obviously, TCM is still TCM, so some random errors are likely to pop up, but the specific fault that was causing almost every collect on those releases should be resolved.
+
+FEAT: You can now pull the XLN file from a customer system from the Tools menu
+FEAT: Labs can now be marked as 'inactive' during times such as the upcoming lab move
+FEAT: Lab Stager - you can now stage a lab (setup patching and copy XLN file). It feeds off the lab list, and is straight forward, but please ensure you check nobody is using the lab manually before you push the button
+FEAT: Now supports using the new Linux based ToolsA server (pltlavmap01.avaya.com) for times when that server is all that is accessible
+FEAT: If prec xxxx nread command fails, it will now retry once
+
+GEN: Added detection for when TCM is already in use
+GEN: Removed PREC list button - list is available in the Help menu
+GEN: Added better error message when triggering PREC parser failure, indicating likely related to previous collector bug in 7.1 / 8.0, as well as potentially having wrong CM release selected, which will trigger the same fault
+GEN: General code improvements and visual tweaks to the GUI

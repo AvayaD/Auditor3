@@ -1,0 +1,30 @@
+﻿<Window x:Class="Auditor3.ScriptGeneratorWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d"
+        Title="Script Generator" SizeToContent="WidthAndHeight">
+    <Grid Style="{StaticResource StandardGrid}">
+        <StackPanel Style="{StaticResource StandardStackPanel}" Orientation="Vertical">
+            <Label Style="{StaticResource StandardLabel}" Width="450" Content="This feature is used to generate basic TCM scripts from an input file of values" />
+            <Label Style="{StaticResource StandardLabel}" HorizontalAlignment="Left" Content="INPUT FILE" />
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <RadioButton Style="{StaticResource StandardRadioButton}" Content="Local File" 
+                             Name="LocalInput" GroupName="InputType" IsChecked="True" Click="Click_SetType" />
+                <RadioButton Style="{StaticResource StandardRadioButton}" Content="ToolsA" Name="ToolsAInput" 
+                             GroupName="InputType" Click="Click_SetType" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <TextBox Style="{StaticResource FixedTextBox}" Width="375" HorizontalAlignment="Left" 
+                         Name="Input" />
+                <Button Style="{StaticResource StandardButton}" Content="BROWSE" Name="BrowseButton"
+                        Click="Click_Browse" />
+            </StackPanel>
+            <Label Style="{StaticResource StandardLabel}" HorizontalAlignment="Left" Content="SCRIPT LINE" />
+            <Label Width="450" Content="Use $1 to represent the value from the input file" />
+            <TextBox Style="{StaticResource FixedTextBox}" Width="450" Name="Script" />
+            <StackPanel Style="{StaticResource StandardStackPanel}" HorizontalAlignment="Center">
+                <Button Style="{StaticResource StandardButton}" Content="GENERATE" Click="Click_Generate" />
+                <Button Style="{StaticResource StandardButton}" Content="CLOSE" Click="Click_Close" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

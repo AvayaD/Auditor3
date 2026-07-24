@@ -1,0 +1,76 @@
+﻿<Window x:Class="Auditor3.PRECListWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d"
+        Title="PRECs" SizeToContent="WidthAndHeight">
+    <Grid Style="{StaticResource StandardGrid}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Label Style="{StaticResource StandardLabel}" Content="-- STATIONS --" Width="150" Grid.Row="0" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__AMW" Grid.Row="1" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__BRIDGE" Grid.Row="2" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__BUTTON" Grid.Row="3" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__EXT (2)" Grid.Row="4" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__FEXT" Grid.Row="5" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__MOBD" Grid.Row="6" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__MOPORT (1)" Grid.Row="7" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__OPT__STN" Grid.Row="8" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__PORT__UID (1)" Grid.Row="9" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__ST__CPS" Grid.Row="10" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__STN" Grid.Row="11" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__TTISET" Grid.Row="12" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__UDATA (2)" Grid.Row="13" Grid.Column="0" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__XMAP" Grid.Row="14" Grid.Column="0" />
+        
+
+        <Label Style="{StaticResource StandardLabel}" Content="-- TRUNKS --" Width="150" Grid.Row="0" Grid.Column="1" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__ACD__TRUNK" Grid.Row="1" Grid.Column="1" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__MOPORT (1)" Grid.Row="2" Grid.Column="1" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__PORT__UID (1)" Grid.Row="3" Grid.Column="1" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__TR__GRP" Grid.Row="4" Grid.Column="1" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__TR__MBR" Grid.Row="5" Grid.Column="1" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__TRUNK" Grid.Row="6" Grid.Column="1" />
+        
+        <Label Style="{StaticResource StandardLabel}" Content="-- ANNOUNCEMENTS --" Width="150" Grid.Row="0" Grid.Column="2" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__AN__GRP" Grid.Row="1" Grid.Column="2" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__AUDIO__GRP (x4c90)" Width="135"  Grid.Row="2" Grid.Column="2" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__AG__MBR (x4c91)" Width="125" Grid.Row="3" Grid.Column="2" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__EXT (2)" Grid.Row="4" Grid.Column="2" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__GM__IANC__BD" Grid.Row="5" Grid.Column="2" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__IANC__BD" Grid.Row="6" Grid.Column="2" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__INT__ANNC" Grid.Row="7" Grid.Column="2" />
+        <Label Style="{StaticResource StandardLabel}" Content="PR__UDATA (2)" Grid.Row="8" Grid.Column="2" />
+
+
+        <Label Style="{StaticResource StandardLabel}" Grid.Row="15" Grid.Column="0" Grid.ColumnSpan="3"
+               Width="400"
+               Content="(1) Only dump once if running both station and trunk audits" />
+        <Label Style="{StaticResource StandardLabel}" Grid.Row="16" Grid.Column="0" Grid.ColumnSpan="3"
+               Width="400"
+               Content="(2) Only dump once if running both station and announcement audits" />
+
+    </Grid>
+</Window>

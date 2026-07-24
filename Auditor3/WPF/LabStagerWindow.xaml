@@ -1,0 +1,43 @@
+﻿<Window x:Class="Auditor3.LabStagerWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d"
+        Title="Lab Stager" SizeToContent="WidthAndHeight">
+    <Grid Style="{StaticResource StandardGrid}">
+        <StackPanel Style="{StaticResource StandardStackPanel}" Orientation="Vertical">
+            <Label Style="{StaticResource StandardLabel}" Width="325" Content="MAKE SURE YOU CHECK THE LAB IS NOT ALREADY IN USE" />
+            <Label Style="{StaticResource StandardLabel}" Width="325" Content="Please fill out this form carefully to stage a lab for testing" />
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="CM RELEASE" />
+                <ComboBox Style="{StaticResource FixedComboBox}" Name="Release" Width="100" SelectionChanged="Click_ReleaseChanged" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="LAB" />
+                <ComboBox Style="{StaticResource FixedComboBox}" Name="Lab" Width="100" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <CheckBox Style="{StaticResource FixedCheckBox}" Width="75" Content="Patch" Name="PatchCheck" 
+                      HorizontalAlignment="Left" Click="Click_Patch" />
+                <ComboBox Style="{StaticResource FixedComboBox}" Name="Patch" HorizontalAlignment="Left" 
+                      IsEnabled="False" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <CheckBox Style="{StaticResource FixedCheckBox}" Width="75" Content="XLN" Name="XLN" HorizontalAlignment="Left" Click="Click_XLN" />
+                <RadioButton Style="{StaticResource StandardRadioButton}" Content="Local PC" Name="LocalPC" GroupName="XLNLocation" IsChecked="True" IsEnabled="False" Click="Click_XLNLocation" />
+                <RadioButton Style="{StaticResource StandardRadioButton}" Content="ToolsA" Name="ToolsA" GroupName="XLNLocation" IsEnabled="False" Click="Click_XLNLocation" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Width="75" Content="" HorizontalAlignment="Left" />
+                <RadioButton Style="{StaticResource StandardRadioButton}" Content="XLN File" Name="XLNFile" GroupName="XLNType" IsChecked="True" IsEnabled="False" />
+                <RadioButton Style="{StaticResource StandardRadioButton}" Content="Backup" Name="XLNBackup" GroupName="XLNType" IsEnabled="False" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <TextBox Style="{StaticResource FixedTextBox}" Width="250" Name="Filename" IsEnabled="False" />
+                <Button Style="{StaticResource StandardButton}" Content="BROWSE" Name="Browse" IsEnabled="False" Click="Click_Browse" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}" HorizontalAlignment="Center">
+                <Button Style="{StaticResource StandardButton}" Content="STAGE" Click="Click_Stage" />
+                <Button Style="{StaticResource StandardButton}" Content="CANCEL" Click="Click_Cancel" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

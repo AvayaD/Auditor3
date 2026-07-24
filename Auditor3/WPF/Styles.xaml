@@ -1,0 +1,81 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="StandardButton" TargetType="Button">
+        <Setter Property="Width" Value="75" />
+        <Setter Property="Height" Value="25" />
+    </Style>
+
+    <Style x:Key="FixedCheckBox" TargetType="CheckBox">
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Width" Value="150" />
+    </Style>
+
+    <Style x:Key="FixedComboBox" TargetType="ComboBox">
+        <Setter Property="Width" Value="150" />
+        <Setter Property="Height" Value="25" />
+    </Style>
+
+    <Style x:Key="StandardGrid" TargetType="Grid">
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Margin" Value="3" />
+    </Style>
+
+    <Style x:Key="StandardLabel" TargetType="Label">
+        <Setter Property="Width" Value="100" />
+        <Setter Property="Height" Value="25" />
+    </Style>
+
+    <Style x:Key="StandardListView" TargetType="ListView">
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+
+    <Style x:Key="StandardMenu" TargetType="Menu">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Height" Value="25" />
+    </Style>
+
+    <Style x:Key="StandardMenuItem" TargetType="MenuItem">
+        <Setter Property="Height" Value="25" />
+        <Setter Property="MinWidth" Value="40" />
+    </Style>
+
+    <Style x:Key="StandardRadioButton" TargetType="RadioButton">
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Width" Value="75" />
+    </Style>
+
+    <Style x:Key="StandardStatusBar" TargetType="StatusBar">
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="Height" Value="25" />
+    </Style>
+
+    <Style x:Key="StandardStackPanel" TargetType="StackPanel">
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Orientation" Value="Horizontal" />
+    </Style>
+
+    <Style x:Key="FillTextBox" TargetType="TextBox">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="AcceptsReturn" Value="True" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Visible" />
+        <Setter Property="FontFamily" Value="Consolas" />
+        <Setter Property="FontSize" Value="13.333" />
+    </Style>
+    <Style x:Key="FixedTextBox" TargetType="TextBox">
+        <Setter Property="Width" Value="150" />
+        <Setter Property="Height" Value="25" />
+    </Style>
+
+    <Style x:Key="FixedPasswordBox" TargetType="PasswordBox">
+        <Setter Property="Width" Value="150" />
+        <Setter Property="Height" Value="25" />
+    </Style>
+
+</ResourceDictionary>

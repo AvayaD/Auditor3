@@ -1,0 +1,47 @@
+﻿<Window x:Class="Auditor3.UserDataWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+        mc:Ignorable="d" Title="User Data" SizeToContent="WidthAndHeight">
+    <Grid Style="{StaticResource StandardGrid}">
+        <StackPanel Style="{StaticResource StandardStackPanel}" Orientation="Vertical">
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="Environment" />
+                <ComboBox Style="{StaticResource FixedComboBox}" Name="Location" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="ToolsA Server" />
+                <TextBox Style="{StaticResource FixedTextBox}" Name="ToolsAServer" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="ToolsA Username" />
+                <TextBox Style="{StaticResource FixedTextBox}" Name="ToolsAUsername" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="ToolsA Password" />
+                <PasswordBox Style="{StaticResource FixedPasswordBox}" Name="ToolsAPassword" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="DRCCD Username" />
+                <TextBox Style="{StaticResource FixedTextBox}" Name="DRCCDUsername" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="DRCCD Password" />
+                <PasswordBox Style="{StaticResource FixedPasswordBox}" Name="DRCCDPassword" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="Default Lab IP" />
+                <TextBox Style="{StaticResource FixedTextBox}" Name="DefaultLabIP" />
+            </StackPanel>
+            <StackPanel Style="{StaticResource StandardStackPanel}">
+                <Label Style="{StaticResource StandardLabel}" Content="Default Live Port" />
+                <TextBox Style="{StaticResource FixedTextBox}" Name="DefaultLivePort" />
+            </StackPanel>
+            <Label />
+            <StackPanel Style="{StaticResource StandardStackPanel}" HorizontalAlignment="Center">
+                <Button Style="{StaticResource StandardButton}" Content="SAVE" Click="Click_Save" />
+                <Button Style="{StaticResource StandardButton}" Content="CANCEL" Click="Click_Cancel" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>
