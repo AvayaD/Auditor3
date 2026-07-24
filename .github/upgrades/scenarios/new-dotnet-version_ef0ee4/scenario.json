@@ -3,7 +3,7 @@
   "operationId": "ef0ee443-01e4-4144-94b2-138c6786657b",
   "description": "Upgrade solution or project to new version of .NET",
   "startTime": "2026-07-24T11:48:39.5226167Z",
-  "lastUpdateTime": "2026-07-24T13:37:40.5926229Z",
+  "lastUpdateTime": "2026-07-24T15:16:23.8593474Z",
   "stage": "Execution",
   "properties": {
     "upgradeTargetFramework": "net9.0",
