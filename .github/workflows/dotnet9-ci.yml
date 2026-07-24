@@ -1,0 +1,37 @@
+name: .NET 9 CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - upgrade-to-NET9
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore Auditor3.sln
+
+      - name: Build (Release)
+        run: dotnet build Auditor3.sln -c Release --no-restore
+
+      - name: List vulnerable packages
+        run: dotnet list Auditor3.sln package --vulnerable || true
+
+      - name: Updater smoke run
+        run: dotnet run --project Updater/Updater.csproj -c Release --no-restore
+
+      - name: Upload build info
+        if: success()
+        run: echo "Build and smoke run completed for ${{ github.ref }}"
