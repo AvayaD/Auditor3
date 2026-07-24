@@ -1,8 +1,8 @@
 Upgrade to .NET 9.0 — summary
 
-- Branch: `upgrade-to-NET9`
+- Branch: `upgrade-t
 - Commit: `9c0f489` (latest)
-- Changes: converted projects to SDK-style; `Auditor3` -> `net9.0-windows` (WPF enabled); `Updater` -> `net9.0`; updated packages: `Newtonsoft.Json` → `13.0.4`, `Microsoft.AspNet.WebApi.Client` → `6.0.0`, `SSH.NET` → `2025.1.0`. Added CI workflow `.github/workflows/dotnet9-ci.yml`.
+- Changes: converted projects to SDo-NET9`K-style; `Auditor3` -> `net9.0-windows` (WPF enabled); `Updater` -> `net9.0`; updated packages: `Newtonsoft.Json` → `13.0.4`, `Microsoft.AspNet.WebApi.Client` → `6.0.0`, `SSH.NET` → `2025.1.0`. Added CI workflow `.github/workflows/dotnet9-ci.yml`.
 - Local build: Release build succeeded (0 errors, 12 warnings).
 - Smoke tests:
   - `Updater` run: succeeded (prints "Update package does not exist" as expected).
