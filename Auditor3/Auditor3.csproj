@@ -1,21 +1,13 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{45866432-4D33-4447-8E58-375AF4520BFE}</ProjectGuid>
     <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <RootNamespace>Auditor3</RootNamespace>
     <AssemblyName>CorruptionAuditor</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
-    <WarningLevel>4</WarningLevel>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Deterministic>true</Deterministic>
-    <TargetFrameworkProfile />
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
+
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
@@ -23,219 +15,40 @@
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="Newtonsoft.Json, Version=6.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\packages\Newtonsoft.Json.6.0.4\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="Renci.SshNet, Version=2016.1.0.0, Culture=neutral, PublicKeyToken=1cee9f8bde3db106, processorArchitecture=MSIL">
-      <HintPath>..\packages\SSH.NET.2016.1.0\lib\net40\Renci.SshNet.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http.Formatting, Version=5.2.7.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.AspNet.WebApi.Client.5.2.7\lib\net45\System.Net.Http.Formatting.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Xml" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xaml">
-      <RequiredTargetFramework>4.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="WindowsBase" />
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Microsoft.AspNet.WebApi.Client" Version="6.0.0" />
+    <PackageReference Include="SSH.NET" Version="2025.1.0" />
   </ItemGroup>
+
+  <!-- Keep App.config as-is -->
   <ItemGroup>
-    <ApplicationDefinition Include="App.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </ApplicationDefinition>
-    <Compile Include="Connections\DRCCDConnection.cs" />
-    <Compile Include="Connections\WebASGConnection.cs" />
-    <Compile Include="Locations\Location.cs" />
-    <Compile Include="Locations\LocationID.cs" />
-    <Compile Include="Locations\Locations.cs" />
-    <Compile Include="Modules\Auditor.cs" />
-    <Compile Include="Audits.cs" />
-    <Compile Include="Modules\Collector.cs" />
-    <Compile Include="Connections\CMConnection.cs" />
-    <Compile Include="Connections\ConnectionBase.cs" />
-    <Compile Include="Connections\LabStagerConnection.cs" />
-    <Compile Include="Connections\ToolsAConnection.cs" />
-    <Compile Include="Database.cs" />
-    <Compile Include="Modules\EECCRAudit.cs" />
-    <Compile Include="Encrypt.cs" />
-    <Compile Include="Modules\Fixer.cs" />
-    <Compile Include="Modules\LabStager.cs" />
-    <Compile Include="Objects\LabInfo.cs" />
-    <Compile Include="Objects\MissingStationType.cs" />
-    <Compile Include="Objects\Mode.cs" />
-    <Compile Include="Objects\PatchInfo.cs" />
-    <Compile Include="Objects\PRECType.cs" />
-    <Compile Include="Objects\Process.cs" />
-    <Compile Include="Objects\State.cs" />
-    <Compile Include="Objects\UpdateInfo.cs" />
-    <Compile Include="PRECs\PR_ACD_TRUNK.cs" />
-    <Compile Include="PRECs\PR_AMW.cs" />
-    <Compile Include="PRECs\PR_AN_GRP.cs" />
-    <Compile Include="PRECs\PR_AUDIO_GRP.cs" />
-    <Compile Include="PRECs\PR_MOBD.cs" />
-    <Compile Include="PRECs\PR_TR_GRP.cs" />
-    <Compile Include="Modules\PullXLN.cs" />
-    <Compile Include="Modules\Repairer.cs" />
-    <Compile Include="Modules\ScriptRunner.cs" />
-    <Compile Include="PRECs\PR_TTISET.cs" />
-    <Compile Include="WPF\CMLabAdminWindow.xaml.cs">
-      <DependentUpon>CMLabAdminWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="WPF\CMPatchAdminWindow.xaml.cs">
-      <DependentUpon>CMPatchAdminWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="WPF\CollectToolsAFileWindow.xaml.cs">
-      <DependentUpon>CollectToolsAFileWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="WPF\findjiraWindow.xaml.cs">
-      <DependentUpon>findjiraWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="WPF\jirasearchdWindow.xaml.cs">
-      <DependentUpon>jirasearchdWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="WPF\LabStagerWindow.xaml.cs">
-      <DependentUpon>LabStagerWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="WPF\MGLabAdminWindow.xaml.cs">
-      <DependentUpon>MGLabAdminWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="WPF\ScriptGeneratorWindow.xaml.cs">
-      <DependentUpon>ScriptGeneratorWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="WPF\UserDataWindow.xaml.cs">
-      <DependentUpon>UserDataWindow.xaml</DependentUpon>
-    </Compile>
-    <Page Include="MainWindow.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Compile Include="App.xaml.cs">
-      <DependentUpon>App.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Objects\CMRelease.cs" />
-    <Compile Include="Globals.cs" />
-    <Compile Include="MainWindow.xaml.cs">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Page Include="WPF\CMLabAdminWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\CMPatchAdminWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\CollectToolsAFileWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\findjiraWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\jirasearchdWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\LabStagerWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\MGLabAdminWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\PRECListWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\ScriptGeneratorWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\Styles.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="WPF\UserDataWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="Objects\StationType.cs" />
-    <Compile Include="Objects\UserData.cs" />
-    <Compile Include="WPF\PRECListWindow.xaml.cs">
-      <DependentUpon>PRECListWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Modules\PRECParser.cs" />
-    <Compile Include="PRECs\PR_AG_MBR.cs" />
-    <Compile Include="PRECs\PR_BRIDGE.cs" />
-    <Compile Include="PRECs\PR_BUTTON.cs" />
-    <Compile Include="PRECs\PR_EXT.cs" />
-    <Compile Include="PRECs\PR_FEXT.cs" />
-    <Compile Include="PRECs\PR_GM_IANC_BD.cs" />
-    <Compile Include="PRECs\PR_IANC_BD.cs" />
-    <Compile Include="PRECs\PR_INT_ANNC.cs" />
-    <Compile Include="PRECs\PR_MOPORT.cs" />
-    <Compile Include="PRECs\PR_OPT_STN.cs" />
-    <Compile Include="PRECs\PR_PORT_UID.cs" />
-    <Compile Include="PRECs\PR_STN.cs" />
-    <Compile Include="PRECs\PR_ST_CPS.cs" />
-    <Compile Include="PRECs\PR_TRUNK.cs" />
-    <Compile Include="PRECs\PR_TR_MBR.cs" />
-    <Compile Include="PRECs\PR_UDATA.cs" />
-    <Compile Include="PRECs\PR_XMAP.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Properties\Resources.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
-    <Compile Include="Properties\Settings.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Settings.settings</DependentUpon>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-    </Compile>
-    <EmbeddedResource Include="Properties\Resources.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <None Include="packages.config" />
-    <None Include="Properties\Settings.settings">
-      <Generator>SettingsSingleFileGenerator</Generator>
-      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    <None Update="App.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <!-- Preserve existing generated files and resources -->
   <ItemGroup>
-    <None Include="App.config" />
+    <None Include="Properties\Settings.settings" />
   </ItemGroup>
-  <ItemGroup />
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
+  <!-- Do not rely on automatic assembly info generation to avoid duplicate attributes -->
+  <PropertyGroup>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="PR_BARRY.cs" />
+  </ItemGroup>
 </Project>
