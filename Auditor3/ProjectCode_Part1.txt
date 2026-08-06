@@ -1,0 +1,3463 @@
+
+====================================================================
+FILE: App.config
+====================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+    <startup> 
+        <supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.8"/>
+    </startup>
+</configuration>
+
+
+====================================================================
+FILE: App.xaml
+====================================================================
+
+<Application x:Class="Auditor3.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    
+    <Application.Resources>
+
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="WPF/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+
+    </Application.Resources>
+    
+</Application>
+
+
+====================================================================
+FILE: App.xaml.cs
+====================================================================
+
+/*
+ * Auditor3 :: App
+ * 
+ * This class defines the startup handling when the application launches.
+ * 
+ * Auditor3 is developed and maintained by David McNutt 
+ * 
+ */
+
+using System.Windows;
+using System.IO;
+using System;
+using Microsoft.Win32;
+using System.Runtime.Versioning;
+
+namespace Auditor3 {
+    [SupportedOSPlatform("windows")]
+    public partial class App : Application {
+        // Import DLL functionality
+        [System.Runtime.InteropServices.DllImport("Shell32.dll")]
+        private static extern int SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
+
+        // Override method to manually handle the startup
+        protected override void OnStartup(StartupEventArgs args) {
+            // Handle base startup
+            base.OnStartup(args);
+
+            // Declare the application path
+            var appPath = AppDomain.CurrentDomain.BaseDirectory + "CorruptionAuditor.exe \"%1\"";
+
+            // Check the registry and ensure we have the keys defined to associate .corr files to the auditor
+            if (OperatingSystem.IsWindows()) {
+                if (Registry.GetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor", string.Empty, string.Empty) == null) {
+                    Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor", "", "CorruptionAuditor");
+                    Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command", "",
+                        appPath);
+                    Registry.SetValue("HKEY_CLASSES_ROOT\\.corr", "", "CorruptionAuditor");
+
+                    SHChangeNotify(0x08000000, 0x2000, IntPtr.Zero, IntPtr.Zero);
+                } else if (Registry.GetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command",
+                      string.Empty, string.Empty).ToString() != appPath) {
+                    Registry.SetValue("HKEY_CLASSES_ROOT\\CorruptionAuditor\\shell\\open\\command", "",
+                        appPath);
+                }
+            }
+
+            // Declare the main window
+            MainWindow window;
+
+            // Try block just in case something happens here, we want to make sure
+            // the window gets created
+            try {
+                // Check if we have any startup args, which should be a .corr file
+                // to preload during the startup
+                if (args.Args.Length > 0) {
+                    // Check if the file actually exists
+                    if (File.Exists(args.Args[0])) {
+                        window = new MainWindow(args.Args[0]);
+                    } else { window = new MainWindow(); }
+                } else { window = new MainWindow(); }
+            } catch (Exception) { window = new MainWindow(); }
+
+            // Show the window and after it's closed shut it down
+            window.ShowDialog();
+            Shutdown();
+        }
+    }
+}
+
+
+====================================================================
+FILE: Auditor3.csproj
+====================================================================
+
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net9.0-windows</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<RootNamespace>Auditor3</RootNamespace>
+		<AssemblyName>CorruptionAuditor</AssemblyName>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	</PropertyGroup>
+
+	<PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+		<PlatformTarget>AnyCPU</PlatformTarget>
+		<DebugSymbols>true</DebugSymbols>
+		<DebugType>full</DebugType>
+		<Optimize>false</Optimize>
+		<OutputPath>bin\Debug\</OutputPath>
+		<DefineConstants>DEBUG;TRACE</DefineConstants>
+	</PropertyGroup>
+
+	<PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+		<PlatformTarget>AnyCPU</PlatformTarget>
+		<DebugType>pdbonly</DebugType>
+		<Optimize>true</Optimize>
+		<OutputPath>bin\Release\</OutputPath>
+		<DefineConstants>TRACE</DefineConstants>
+	</PropertyGroup>
+
+	<!-- Allow Auditor3.Tests to access internal members -->
+	<ItemGroup>
+		<InternalsVisibleTo Include="Auditor3.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+		<PackageReference Include="Microsoft.AspNet.WebApi.Client" Version="6.0.0" />
+		<PackageReference Include="SSH.NET" Version="2025.1.0" />
+	</ItemGroup>
+
+	<!-- Keep App.config as-is -->
+	<ItemGroup>
+		<None Update="App.config">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- Preserve existing generated files and resources -->
+	<ItemGroup>
+		<None Include="Properties\Settings.settings" />
+	</ItemGroup>
+
+	<!-- Do not rely on automatic assembly info generation to avoid duplicate attributes -->
+	<PropertyGroup>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Remove="PR_BARRY.cs" />
+	</ItemGroup>
+</Project>
+
+====================================================================
+FILE: Audits.cs
+====================================================================
+
+/*
+ * Auditor3 :: Audits
+ * 
+ * This class defines the audits that are run against the database objects.
+ * 
+ * Python Auditor3 is developed and maintained by David McNutt mcnuttd@avaya.com
+ * 
+ */
+
+using System;
+using System.Linq;
+using System.Text;
+using System.IO;
+
+namespace Auditor3 {
+    internal static class Audits {
+
+        internal static int Corrupted;              // Count of corrupted records
+        internal static int CorruptedStations;      // Count of corrupted station records
+        internal static int CorruptedTrunks;        // Count of corrupted trunk records
+        internal static int CorruptedAnnouncements; // Count of corrupted announcement records
+        internal static int ManualFixes;            // Count of required manual fixes
+
+        internal static int Checked;                // Count of records that have been checked
+        internal static int ToCheck;                // Count of records that need to be checked
+
+        internal static int AuditS01Hits;           // Count of AUDITS01 issues
+        internal static int AuditS02Hits;           // Count of AUDITS02 issues
+        internal static int AuditS03Hits;           // Count of AUDITS03 issues
+        internal static int AuditS04Hits;           // Count of AUDITS04 issues
+        internal static int AuditS05Hits;           // Count of AUDITS05 issues
+        internal static int AuditS06Hits;           // Count of AUDITS06 issues
+        internal static int AuditS07Hits;           // Count of AUDITS07 issues
+        internal static int AuditS08Hits;           // Count of AUDITS08 issues
+        internal static int AuditS09Hits;           // Count of AUDITS09 issues
+        internal static int AuditS10Hits;           // Count of AUDITS10 issues
+        internal static int AuditS11Hits;           // Count of AUDITS11 issues
+        internal static int AuditS12Hits;           // Count of AUDITS12 issues
+        internal static int AuditS13Hits;           // Count of AUDITS13 issues
+        internal static int AuditS14Hits;           // Count of AUDITS14 issues
+        internal static int AuditS15Hits;           // Count of AUDITS15 issues
+        internal static int AuditS16Hits;           // Count of AUDITS16 issues
+        internal static int AuditS17Hits;           // Count of AUDITS17 issues
+        internal static int AuditS18Hits;           // Count of AUDITS18 issues
+        internal static int AuditS19Hits;           // Count of AUDITS19 issues
+        internal static int AuditS20Hits;           // Count of AUDITS20 issues
+        internal static int AuditS21Hits;           // Count of AUDITS21 issues
+        internal static int AuditS22Hits;           // Count of AUDITS22 issues
+        internal static int AuditS23Hits;           // Count of AUDITS23 issues
+        internal static int AuditS24Hits;           // Count of AUDITS24 issues
+        internal static int AuditS25Hits;           // Count of AUDITS25 issues
+        internal static int AuditS26Hits;           // Count of AUDITS26 issues
+        internal static int AuditS27Hits;           // Count of AUDITS27 issues
+        internal static int AuditS28Hits;           // Count of AUDITS28 issues
+        internal static int AuditS29Hits;           // Count of AUDITS29 issues
+        internal static int AuditS30Hits;           // Count of AUDITS30 issues
+        internal static int AuditS31Hits;           // Count of AUDITS31 issues
+        internal static int AuditS32Hits;           // Count of AUDITS32 issues
+        internal static int AuditS33Hits;           // Count of AUDITS33 issues
+        internal static int AuditS34Hits;           // Count of AUDITS34 issues
+        internal static int AuditS35Hits;           // Count of AUDITS35 issues
+
+        internal static int AuditA01Hits;           // Count of AUDITA01 issues
+        internal static int AuditA02Hits;           // Count of AUDITA02 issues
+        internal static int AuditA03Hits;           // Count of AUDITA03 issues
+        internal static int AuditA04Hits;           // Count of AUDITA04 issues
+        internal static int AuditA05Hits;           // Count of AUDITA05 issues
+        internal static int AuditA06Hits;           // Count of AUDITA06 issues
+        internal static int AuditA07Hits;           // Count of AUDITA07 issues
+        internal static int AuditA08Hits;           // Count of AUDITA08 issues
+        internal static int AuditA09Hits;           // Count of AUDITA09 issues
+        internal static int AuditA10Hits;           // Count of AUDITA10 issues
+        internal static int AuditA11Hits;           // Count of AUDITA11 issues
+
+        internal static int AuditT01Hits;           // Count of AUDITT01 issues
+        internal static int AuditT02Hits;           // Count of AUDITT02 issues
+        internal static int AuditT03Hits;           // Count of AUDITT03 issues
+        internal static int AuditT04Hits;           // Count of AUDITT04 issues
+        internal static int AuditT05Hits;           // Count of AUDITT05 issues
+        internal static int AuditT06Hits;           // Count of AUDITT06 issues
+        internal static int AuditT07Hits;           // Count of AUDITT07 issues
+        internal static int AuditT08Hits;           // Count of AUDITT08 issues
+        internal static int AuditT09Hits;
+
+        // This method resets all the counters to zero
+        internal static void ResetCounters() {
+            Corrupted = 0;
+            CorruptedStations = 0;
+            CorruptedTrunks = 0;
+            CorruptedAnnouncements = 0;
+            ManualFixes = 0;
+
+            AuditS01Hits = 0;
+            AuditS02Hits = 0;
+            AuditS03Hits = 0;
+            AuditS04Hits = 0;
+            AuditS05Hits = 0;
+            AuditS06Hits = 0;
+            AuditS07Hits = 0;
+            AuditS08Hits = 0;
+            AuditS09Hits = 0;
+            AuditS10Hits = 0;
+            AuditS11Hits = 0;
+            AuditS12Hits = 0;
+            AuditS13Hits = 0;
+            AuditS14Hits = 0;
+            AuditS15Hits = 0;
+            AuditS16Hits = 0;
+            AuditS17Hits = 0;
+            AuditS18Hits = 0;
+            AuditS19Hits = 0;
+            AuditS20Hits = 0;
+            AuditS21Hits = 0;
+            AuditS22Hits = 0;
+            AuditS23Hits = 0;
+            AuditS24Hits = 0;
+            AuditS25Hits = 0;
+            AuditS26Hits = 0;
+            AuditS27Hits = 0;
+            AuditS28Hits = 0;
+            AuditS29Hits = 0;
+            AuditS30Hits = 0;
+            AuditS31Hits = 0;
+            AuditS32Hits = 0;
+            AuditS33Hits = 0;
+            AuditS34Hits = 0;
+            AuditS35Hits = 0;
+
+            AuditA01Hits = 0;
+            AuditA02Hits = 0;
+            AuditA03Hits = 0;
+            AuditA04Hits = 0;
+            AuditA05Hits = 0;
+            AuditA06Hits = 0;
+            AuditA07Hits = 0;
+            AuditA08Hits = 0;
+            AuditA09Hits = 0;
+            AuditA10Hits = 0;
+            AuditA11Hits = 0;
+
+            AuditT01Hits = 0;
+            AuditT02Hits = 0;
+            AuditT03Hits = 0;
+            AuditT04Hits = 0;
+            AuditT05Hits = 0;
+            AuditT06Hits = 0;
+            AuditT07Hits = 0;
+            AuditT08Hits = 0;
+            AuditT09Hits = 0;
+        }
+
+        // This method is used to show the counter totals
+        internal static void ShowCounters() {
+            // Create a string builder to store the counts
+            var counts = new StringBuilder();
+
+            // Add the relevant counts
+            counts.AppendLine($"CORRUPTED               : {Corrupted}");
+            if (Globals.STATION_AUDITS)
+                counts.AppendLine($"CORRUPTED STATIONS      : {CorruptedStations}");
+            if (Globals.TRUNK_AUDITS)
+                counts.AppendLine($"CORRUPTED TRUNKS        : {CorruptedTrunks}");
+            if (Globals.ANNOUNCEMENT_AUDITS)
+                counts.AppendLine($"CORRUPTED ANNOUNCEMENTS : {CorruptedAnnouncements}");
+            counts.AppendLine($"MANUAL FIXES            : {ManualFixes}");
+            counts.AppendLine();
+            if (AuditS01Hits > 0)
+                counts.AppendLine($"AUDIT-S01 : {AuditS01Hits}");
+            if (AuditS02Hits > 0)
+                counts.AppendLine($"AUDIT-S02 : {AuditS02Hits}");
+            if (AuditS03Hits > 0)
+                counts.AppendLine($"AUDIT-S03 : {AuditS03Hits}");
+            if (AuditS04Hits > 0)
+                counts.AppendLine($"AUDIT-S04 : {AuditS04Hits}");
+            if (AuditS05Hits > 0)
+                counts.AppendLine($"AUDIT-S05 : {AuditS05Hits}");
+            if (AuditS06Hits > 0)
+                counts.AppendLine($"AUDIT-S06 : {AuditS06Hits}");
+            if (AuditS07Hits > 0)
+                counts.AppendLine($"AUDIT-S07 : {AuditS07Hits}");
+            if (AuditS08Hits > 0)
+                counts.AppendLine($"AUDIT-S08 : {AuditS08Hits}");
+            if (AuditS09Hits > 0)
+                counts.AppendLine($"AUDIT-S09 : {AuditS09Hits}");
+            if (AuditS10Hits > 0)
+                counts.AppendLine($"AUDIT-S10 : {AuditS10Hits}");
+            if (AuditS11Hits > 0)
+                counts.AppendLine($"AUDIT-S11 : {AuditS11Hits}");
+            if (AuditS12Hits > 0)
+                counts.AppendLine($"AUDIT-S12 : {AuditS12Hits}");
+            if (AuditS13Hits > 0)
+                counts.AppendLine($"AUDIT-S13 : {AuditS13Hits}");
+            if (AuditS14Hits > 0)
+                counts.AppendLine($"AUDIT-S14 : {AuditS14Hits}");
+            if (AuditS15Hits > 0)
+                counts.AppendLine($"AUDIT-S15 : {AuditS15Hits}");
+            if (AuditS16Hits > 0)
+                counts.AppendLine($"AUDIT-S16 : {AuditS16Hits}");
+            if (AuditS17Hits > 0)
+                counts.AppendLine($"AUDIT-S17 : {AuditS17Hits}");
+            if (AuditS18Hits > 0)
+                counts.AppendLine($"AUDIT-S18 : {AuditS18Hits}");
+            if (AuditS19Hits > 0)
+                counts.AppendLine($"AUDIT-S19 : {AuditS19Hits}");
+            if (AuditS20Hits > 0)
+                counts.AppendLine($"AUDIT-S20 : {AuditS20Hits}");
+            if (AuditS21Hits > 0)
+                counts.AppendLine($"AUDIT-S21 : {AuditS21Hits}");
+            if (AuditS22Hits > 0)
+                counts.AppendLine($"AUDIT-S22 : {AuditS22Hits}");
+            if (AuditS23Hits > 0)
+                counts.AppendLine($"AUDIT-S23 : {AuditS23Hits}");
+            if (AuditS24Hits > 0)
+                counts.AppendLine($"AUDIT-S24 : {AuditS24Hits}");
+            if (AuditS25Hits > 0)
+                counts.AppendLine($"AUDIT-S25 : {AuditS25Hits}");
+            if (AuditS26Hits > 0)
+                counts.AppendLine($"AUDIT-S26 : {AuditS26Hits}");
+            if (AuditS27Hits > 0)
+                counts.AppendLine($"AUDIT-S27 : {AuditS27Hits}");
+            if (AuditS28Hits > 0)
+                counts.AppendLine($"AUDIT-S28 : {AuditS28Hits}");
+            if (AuditS29Hits > 0)
+                counts.AppendLine($"AUDIT-S29 : {AuditS29Hits}");
+            if (AuditS30Hits > 0)
+                counts.AppendLine($"AUDIT-S30 : {AuditS30Hits}");
+            if (AuditS31Hits > 0)
+                counts.AppendLine($"AUDIT-S31 : {AuditS31Hits}");
+            if (AuditS32Hits > 0)
+                counts.AppendLine($"AUDIT-S32 : {AuditS32Hits}");
+            if (AuditS33Hits > 0)
+                counts.AppendLine($"AUDIT-S33 : {AuditS33Hits}");
+            if (AuditS34Hits > 0)
+                counts.AppendLine($"AUDIT-S34 : {AuditS34Hits}");
+            if (AuditS35Hits > 0)
+                counts.AppendLine($"AUDIT-S35 : {AuditS35Hits}");
+
+            if (AuditA01Hits > 0)
+                counts.AppendLine($"AUDIT-A01 : {AuditA01Hits}");
+            if (AuditA02Hits > 0)
+                counts.AppendLine($"AUDIT-A02 : {AuditA02Hits}");
+            if (AuditA03Hits > 0)
+                counts.AppendLine($"AUDIT-A03 : {AuditA03Hits}");
+            if (AuditA04Hits > 0)
+                counts.AppendLine($"AUDIT-A04 : {AuditA04Hits}");
+            if (AuditA05Hits > 0)
+                counts.AppendLine($"AUDIT-A05 : {AuditA05Hits}");
+            if (AuditA06Hits > 0)
+                counts.AppendLine($"AUDIT-A06 : {AuditA06Hits}");
+            if (AuditA07Hits > 0)
+                counts.AppendLine($"AUDIT-A07 : {AuditA07Hits}");
+            if (AuditA08Hits > 0)
+                counts.AppendLine($"AUDIT-A08 : {AuditA08Hits}");
+            if (AuditA09Hits > 0)
+                counts.AppendLine($"AUDIT-A09 : {AuditA09Hits}");
+            if (AuditA10Hits > 0)
+                counts.AppendLine($"AUDIT-A10 : {AuditA10Hits}");
+            if (AuditA11Hits > 0)
+                counts.AppendLine($"AUDIT-A11 : {AuditA11Hits}");
+
+            if (AuditT01Hits > 0)
+                counts.AppendLine($"AUDIT-T01 : {AuditT01Hits}");
+            if (AuditT02Hits > 0)
+                counts.AppendLine($"AUDIT-T02 : {AuditT02Hits}");
+            if (AuditT03Hits > 0)
+                counts.AppendLine($"AUDIT-T03 : {AuditT03Hits}");
+            if (AuditT04Hits > 0)
+                counts.AppendLine($"AUDIT-T04 : {AuditT04Hits}");
+            if (AuditT05Hits > 0)
+                counts.AppendLine($"AUDIT-T05 : {AuditT05Hits}");
+            if (AuditT06Hits > 0)
+                counts.AppendLine($"AUDIT-T06 : {AuditT06Hits}");
+            if (AuditT07Hits > 0)
+                counts.AppendLine($"AUDIT-T07 : {AuditT07Hits}");
+            if (AuditT08Hits > 0)
+                counts.AppendLine($"AUDIT-T08 : {AuditT08Hits}");
+            if(AuditT09Hits > 0)
+                counts.AppendLine($"AUDIT-T09 : {AuditT09Hits}");
+
+            // Output the counts to the report
+            Globals.GUI.AddOutput(counts.ToString());
+        }
+
+        // AUDIT-S01 : This audit will check a PR_STN record and ensure it has a PR_UDATA
+        internal static bool AuditS01(PR_STN pr_stn) {
+            if (!pr_stn.HasUDATA()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S01");
+                message.AppendLine("PR_STN is missing PR_UDATA");
+                message.AppendLine($"UID: {pr_stn.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.Station(pr_stn.UID));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS01Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S02 : This will check a PR_ST_CPS record and ensure it has both a PR_PORT_UID
+        // and a PR_MOPORT. If it fails, it has to be the only UID using the port, otherwise
+        // it will trigger AUDITS03 instead
+        internal static bool AuditS02(PR_ST_CPS pr_st_cps) {
+            if (!pr_st_cps.HasPORTUID() && !pr_st_cps.HasMOPORT() && pr_st_cps.HasSTN() &&
+                !pr_st_cps.HasDuplicates()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S02");
+                message.AppendLine("PR_ST_CPS is missing PR_PORT_UID and PR_MOPORT");
+                message.AppendLine($"UID: {pr_st_cps.UID}");
+                message.AppendLine($"Port: {pr_st_cps.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.PR_MOPORT(pr_st_cps.UID, pr_st_cps.Port));
+                message.AppendLine(Fixer.Add.PR_PORT_UID(pr_st_cps.UID, pr_st_cps.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS02Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S03 : This will check a PR_ST_CPS record and ensure it has both a PR_PORT_UID
+        // and a PR_MOPORT. If it fails, this will trigger if there are multiple UIDs using the
+        // port, otherwise it would have already triggered AUDITS02 instead
+        internal static bool AuditS03(PR_ST_CPS pr_st_cps) {
+            if (!pr_st_cps.HasPORTUID() && !pr_st_cps.HasMOPORT() && pr_st_cps.HasSTN() &&
+                pr_st_cps.HasDuplicates()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S03");
+                message.AppendLine("Incorrect port assigned in PR_ST_CPS");
+                message.AppendLine($"UID: {pr_st_cps.UID}");
+                message.AppendLine($"Port: {pr_st_cps.Port}");
+                message.AppendLine();
+
+                // If this is an IP station, we can assign an unused port, otherwise it needs to
+                // be manually fixed, likely making it an x-port
+                var pr_stn = Database.PR_STNs.Find(a => a.UID == pr_st_cps.UID);
+                if (pr_stn.IsIP()) {
+                    message.AppendLine(Fixer.Add.NewIPPort(pr_st_cps.UID));
+                } else {
+                    message.AppendLine("** UNABLE TO ASSIGN TDM PORT AUTOMATICALLY **");
+                    message.AppendLine("** MANUAL FIX REQUIRED **");
+                    ManualFixes++;
+                    Database.ManualPorts.Add(pr_st_cps.Port);
+                    Database.ManualUIDs.Add(pr_st_cps.UID);
+                }
+
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS03Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S04 : This audit will check a PR_STN record and ensure it has 
+        // a PR_EXT on the same UID. This audit does not run against ATTD_USER GID
+        internal static bool AuditS04(PR_STN pr_stn) {
+            if (pr_stn.GID != "0002" && !pr_stn.HasEXT()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S04");
+                message.AppendLine("PR_STN is missing PR_EXT");
+                message.AppendLine($"UID: {pr_stn.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.Station(pr_stn.UID));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS04Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S05 : This audit will check a PR_EXT record and ensure it has
+        // a PR_UDATA with the same UID. This only runs for station extensions
+        internal static bool AuditS05(PR_EXT pr_ext) {
+            if (pr_ext.GID == "0000" && !pr_ext.HasUDATA()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S05");
+                message.AppendLine("PR_EXT has no PR_UDATA");
+                message.AppendLine($"UID: {pr_ext.UID}");
+                message.AppendLine($"Extension: {pr_ext.Digits}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_EXT(pr_ext.Digits));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS05Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S06 : This audit will check if a PR_PORT_UID is missing both
+        // PR_MOPORT and PR_ST_CPS
+        internal static bool AuditS06(PR_PORT_UID pr_port_uid) {
+            if (!pr_port_uid.HasMOPORT() && !pr_port_uid.HasSTCPS()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S06");
+                message.AppendLine("PR_PORT_UID has neither PR_MOPORT nor PR_ST_CPS");
+                message.AppendLine($"UID: {pr_port_uid.UID}");
+                message.AppendLine($"Port: {pr_port_uid.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_PORT_UID(pr_port_uid.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS06Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S07 : This audit will check a PR_PORT_UID for missing PR_MOPORT
+        // but does have a PR_ST_CPS, and no duplicates PR_ST_CPS
+        internal static bool AuditS07(PR_PORT_UID pr_port_uid) {
+            if (!pr_port_uid.HasMOPORT() && pr_port_uid.HasSTCPS() && !pr_port_uid.HasDuplicateSTCPS()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S07");
+                message.AppendLine("PR_PORT_UID is missing PR_MOPORT");
+                message.AppendLine($"UID: {pr_port_uid.UID}");
+                message.AppendLine($"Port: {pr_port_uid.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.PR_MOPORT(pr_port_uid.UID, pr_port_uid.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS07Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S08 : This audit will check a PR_PORT_UID for missing PR_ST_CPS
+        // but does have a PR_MOPORT and a valid station owns the port
+        internal static bool AuditS08(PR_PORT_UID pr_port_uid) {
+            if (pr_port_uid.HasMOPORT() && !pr_port_uid.HasSTCPS() && pr_port_uid.UID != Globals.NULL_UID &&
+                pr_port_uid.GID != "0034" && !pr_port_uid.UIDHasDuplicatePort() && !pr_port_uid.UIDOwnsAnotherPort() &&
+                pr_port_uid.HasSTN()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S08");
+                message.AppendLine("PR_PORT_UID is missing PR_ST_CPS");
+                message.AppendLine($"UID: {pr_port_uid.UID}");
+                message.AppendLine($"Port: {pr_port_uid.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.PR_ST_CPS(pr_port_uid.UID, pr_port_uid.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS08Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S09 : DUPLICATE PORT ISSUE AUDIT
+        internal static bool AuditS09(PR_PORT_UID pr_port_uid) {
+            var success = true;
+            var ports = Database.PR_ST_CPSs.FindAll(a => a.Port == pr_port_uid.Port);
+            foreach (var port in ports.Where(a => a.UID != pr_port_uid.UID && a.HasSTN())) {
+                success = false;
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S09");
+                message.AppendLine("Incorrect PR_ST_CPS");
+                message.AppendLine($"UID: {port.UID}");
+                message.AppendLine($"Port: {port.Port}");
+
+                if (ports.Count > 1) {
+                    message.AppendLine("** DUPLICATE PORT ISSUE **");
+                    foreach (var cps in ports) {
+                        message.AppendLine($"UID: {cps.UID}");
+                    }
+                }
+
+                message.AppendLine();
+                message.AppendLine(Fixer.Update.PR_ST_CPS(port.UID));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS09Hits++;
+            }
+            return success;
+        }
+
+        // AUDIT-S10 : This audit checks every IP station's PR_ST_CPS to ensure it has
+        // a valid 7f port
+        internal static bool AuditS10(PR_STN pr_stn) {
+            if (pr_stn.IsIP() && !pr_stn.HasValidIPPort()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S10");
+                message.AppendLine("IP station does not have valid 7fxxxxxx port");
+                message.AppendLine($"UID: {pr_stn.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.NewIPPort(pr_stn.UID));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS10Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S11 : This audit checked every PR_BUTTON record to ensure it has
+        // a valid PR_STN or PR_UDATA record
+        internal static bool AuditS11(PR_BUTTON pr_button) {
+            if (pr_button.Number == "0001" && !pr_button.HasSTN() && !pr_button.HasUDATA()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S11");
+                message.AppendLine("PR_BUTTON has neither PR_STN nor PR_UDATA");
+                message.AppendLine($"UID: {pr_button.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_BUTTON(pr_button.UID, "0001"));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS11Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S12 : This audit triggers when a PR_ST_CPS record is missing a PR_PORT_UID
+        // but does have a PR_MOPORT
+        internal static bool AuditS12(PR_ST_CPS pr_st_cps) {
+            if (!pr_st_cps.HasPORTUID() && pr_st_cps.HasMOPORT() && !pr_st_cps.HasDuplicates()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S12");
+                message.AppendLine("PR_ST_CPS is missing PR_PORT_UID");
+                message.AppendLine($"UID: {pr_st_cps.UID}");
+                message.AppendLine($"Port: {pr_st_cps.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.PR_PORT_UID(pr_st_cps.UID, pr_st_cps.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS12Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S13 : This audit triggers when a PR_MOPORT is missing PR_PORT_UID but
+        // does have a PR_ST_CPS
+        internal static bool AuditS13(PR_MOPORT pr_moport) {
+            if (pr_moport.HasSTCPS() && !pr_moport.HasPORTUID()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S13");
+                message.AppendLine("PR_MOPORT is missing PR_PORT_UID");
+                message.AppendLine($"UID: {pr_moport.UID()}");
+                message.AppendLine($"Port: {pr_moport.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.PR_PORT_UID(pr_moport.UID(), pr_moport.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS13Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S14 : This audit triggers when a PR_MOPORT has neither PR_ST_CPS nor
+        // PR_PORT_UID and is basically an abandoned record
+        internal static bool AuditS14(PR_MOPORT pr_moport) {
+            if (!pr_moport.HasSTCPS() && !pr_moport.HasPORTUID()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S14");
+                message.AppendLine("PR_MOPORT is abandoned");
+                message.AppendLine($"UID: {pr_moport.UID()}");
+                message.AppendLine($"Port: {pr_moport.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_MOPORT(pr_moport.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS14Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S15 : This audit triggers when the UID is null for a PR_PORT_UID
+        // and we can find a valid owner
+        internal static bool AuditS15(PR_PORT_UID pr_port_uid) {
+            if (pr_port_uid.HasMOPORT() && pr_port_uid.UID == Globals.NULL_UID && 
+                pr_port_uid.ValidOwner() != null) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S15");
+                message.AppendLine("PR_PORT_UID has incorrect UID");
+                message.AppendLine($"Old UID: {pr_port_uid.UID}");
+                message.AppendLine($"New UID: {pr_port_uid.ValidOwner()}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Update.PR_PORT_UID(pr_port_uid.Port, pr_port_uid.ValidOwner()));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS15Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S16 : This audit triggers when the UID is null for a PR_PORT_UID
+        // and we cannot find a valid owner
+        internal static bool AuditS16(PR_PORT_UID pr_port_uid) {
+            if (pr_port_uid.HasMOPORT() && pr_port_uid.UID == Globals.NULL_UID && 
+                pr_port_uid.ValidOwner() == null) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S16");
+                message.AppendLine("PR_PORT_UID and PR_MOPORT are abandoned");
+                message.AppendLine($"Port: {pr_port_uid.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_PORT_UID(pr_port_uid.Port));
+                message.AppendLine(Fixer.Remove.PR_MOPORT(pr_port_uid.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS16Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S17 : This audit triggers when a PR_PORT_UID does not have a PR_ST_CPS,
+        // does have a PR_MOPORT, but the UID owns another port, so this one is orphaned
+        internal static bool AuditS17(PR_PORT_UID pr_port_uid) {
+            if (pr_port_uid.HasMOPORT() && !pr_port_uid.HasSTCPS() && pr_port_uid.UID != Globals.NULL_UID &&
+                pr_port_uid.GID != "0034" && !pr_port_uid.UIDOwnsAnotherPort() && !pr_port_uid.UIDHasDuplicatePort()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S17");
+                message.AppendLine("PR_PORT_UID and PR_MOPORT are abandoned");
+                message.AppendLine($"UID: {pr_port_uid.UID}");
+                message.AppendLine($"Port: {pr_port_uid.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_MOPORT(pr_port_uid.Port));
+                message.AppendLine(Fixer.Remove.PR_PORT_UID(pr_port_uid.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS17Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S18 : This audit triggers when a bridged appearance PR_BUTTON does not
+        // point to a valid UID
+        internal static bool AuditS18(PR_BUTTON pr_button) {
+            if (pr_button.Bridged && !pr_button.HasValidBridgedUID()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S18");
+                message.AppendLine("Bridged PR_BUTTON has invalid target UID");
+                message.AppendLine($"UID: {pr_button.UID}");
+                message.AppendLine($"Number: {pr_button.Number}");
+                message.AppendLine($"Target UID: {pr_button.BridgedUID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_BUTTON(pr_button.UID, pr_button.Number));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS18Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S19 : This audit triggers when a PR_BRIDGE record does not have a valid
+        // primary UID
+        internal static bool AuditS19(PR_BRIDGE pr_bridge) {
+            if (!pr_bridge.HasValidPrimaryUID()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S19");
+                message.AppendLine("PR_BRIDGE has invalid primary UID");
+                message.AppendLine($"Primary UID: {pr_bridge.PrimaryUID}");
+                message.AppendLine($"Bridged UID: {pr_bridge.BridgedUID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_BRIDGE(pr_bridge));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS19Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S20 : This audit triggers when a PR_ST_CPS record has neither a
+        // PR_STN or PR_UDATA
+        internal static bool AuditS20(PR_ST_CPS pr_st_cps) {
+            if (!pr_st_cps.HasSTN() && !pr_st_cps.HasUDATA()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S20");
+                message.AppendLine("PR_ST_CPS is missing PR_STN and PR_UDATA");
+                message.AppendLine($"UID: {pr_st_cps.UID}");
+                message.AppendLine($"Port: {pr_st_cps.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_ST_CPS(pr_st_cps.UID));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS20Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S21 : This audit triggers when a PR_PORT_UID does not
+        // have a valid station
+        internal static bool AuditS21(PR_PORT_UID pr_port_uid) {
+            if (pr_port_uid.HasMOPORT() && !pr_port_uid.HasSTCPS() && pr_port_uid.UID != Globals.NULL_UID &&
+                pr_port_uid.GID != "0034" && !pr_port_uid.UIDHasDuplicatePort() && !pr_port_uid.UIDOwnsAnotherPort()
+                && !pr_port_uid.HasSTN()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S21");
+                message.AppendLine("Port is abandoned");
+                message.AppendLine($"UID: {pr_port_uid.UID}");
+                message.AppendLine($"Port: {pr_port_uid.Port}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_PORT_UID(pr_port_uid.Port));
+                message.AppendLine(Fixer.Remove.PR_MOPORT(pr_port_uid.Port));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS21Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S22 : This audit triggers when a PR_UDATA does not have a PR_STN
+        internal static bool AuditS22(PR_UDATA pr_udata) {
+            if (!pr_udata.HasSTN()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S22");
+                message.AppendLine("PR_UDATA does not have PR_STN");
+                message.AppendLine($"UID: {pr_udata.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.Station(pr_udata.UID));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS22Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S23 : This audit triggers when a PR_XMAP does not have a PR_OPT_STN
+        internal static bool AuditS23(PR_XMAP pr_xmap) {
+            if (!pr_xmap.HasOPTSTN() && !pr_xmap.IsXMOBILE()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S23");
+                message.AppendLine("PR_XMAP does not have PR_OPT_STN");
+                message.AppendLine($"UID: {pr_xmap.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_XMAP(pr_xmap));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS23Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S24 : This audit triggers when a PR_OPT_STN does not have a PR_XMAP
+        internal static bool AuditS24(PR_OPT_STN pr_opt_stn) {
+            if (!pr_opt_stn.HasXMAP()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S24");
+                message.AppendLine("PR_OPT_STN does not have PR_XMAP");
+                message.AppendLine($"UID: {pr_opt_stn.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_OPT_STN(pr_opt_stn));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS24Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S25 : This audit triggers when a PR_XMAP does not have a PR_UDATA
+        internal static bool AuditS25(PR_XMAP pr_xmap) {
+            if (!pr_xmap.HasUDATA()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S25");
+                message.AppendLine("PR_XMAP does not have PR_UDATA");
+                message.AppendLine($"UID: {pr_xmap.UID}");
+                message.AppendLine();
+                message.AppendLine("- You will need to add a fake PR_UDATA to remove this record");
+                message.AppendLine(string.Join(Environment.NewLine, pr_xmap.PREC));
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Database.ManualUIDs.Add(pr_xmap.UID);
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                ManualFixes++;
+                AuditS25Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S26 : This audit triggers when a PR_OPT_STN does not have a PR_UDATA
+        internal static bool AuditS26(PR_OPT_STN pr_opt_stn) {
+            if (!pr_opt_stn.HasUDATA()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S26");
+                message.AppendLine("PR_OPT_STN does not have PR_UDATA");
+                message.AppendLine($"UID: {pr_opt_stn.UID}");
+                message.AppendLine();
+                message.AppendLine("- You will need to add a fake PR_UDATA to remove this record");
+                message.AppendLine(string.Join(Environment.NewLine, pr_opt_stn.PREC));
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Database.ManualUIDs.Add(pr_opt_stn.UID);
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                ManualFixes++;
+                AuditS26Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S27 : This audit triggers when a PR_STN does not have a PR_FEXT
+        internal static bool AuditS27(PR_STN pr_stn) {
+            if (!pr_stn.HasFEXT() && pr_stn.HasEXT()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S27");
+                message.AppendLine("PR_STN does not have PR_FEXT");
+                message.AppendLine($"UID: {pr_stn.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.PR_FEXT(pr_stn.UID));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS27Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S28 : This audit triggers when a PR_STN has mismatched digits in PR_EXT/PR_FEXT
+        internal static bool AuditS28(PR_STN pr_stn) {
+            if (pr_stn.HasEXT() && pr_stn.HasUDATA() && !pr_stn.HasMatchingDigits()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S28");
+                message.AppendLine("PR_STN has mismatched digits in PR_EXT and PR_FEXT");
+                message.AppendLine($"UID: {pr_stn.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Update.PR_FEXT(pr_stn.UID));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS28Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S29 : This audit triggers when there is an AWOH mismatch
+        internal static bool AuditS29(PR_STN pr_stn) {
+            if (pr_stn.HasAWOHMismatch()) {
+                // If this is an IP station and we are not AWOH, then we can skip, another
+                // audit will add a proper IP port
+                if (pr_stn.IsIP() && !pr_stn.AWOH) return true;
+                var pr_st_cps = Database.PR_ST_CPSs.Find(a => a.UID == pr_stn.UID);
+                var port = pr_st_cps != null ? pr_st_cps.Port : Globals.NULL_PORT;
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S29");
+                message.AppendLine("AWOH MISMATCH");
+                message.AppendLine($"UID : {pr_stn.UID}");
+                message.AppendLine($"PORT: {port}");
+                message.AppendLine($"AWOH: {pr_stn.AWOH}");
+                message.AppendLine();
+                
+                if (pr_stn.IsIP() && pr_stn.AWOH) {
+                    message.AppendLine("** IP STATION CANNOT BE AWOH **");
+                    message.AppendLine("** MUST USE TCM BUFFER TO CHANGE more_info TO NOT BE AWOH **");
+                    message.AppendLine("** MANUAL FIX REQUIRED **");
+                    ManualFixes++;
+                    if (port != Globals.NULL_PORT) Database.ManualPorts.Add(port);
+                    Database.ManualUIDs.Add(pr_stn.UID);
+                } else if (!pr_stn.IsIP() && pr_stn.AWOH && pr_stn.HasValidIPPort()) {
+                    message.AppendLine("AWOH TDM station has IP port");
+                    message.AppendLine();
+                    message.AppendLine(Fixer.Remove.PR_MOPORT(port));
+                    message.AppendLine(Fixer.Remove.PR_PORT_UID(port));
+                    message.AppendLine(Fixer.Update.PR_ST_CPS(pr_stn.UID, Globals.NULL_PORT));
+                } else if (!pr_stn.IsIP() && pr_stn.AWOH && port != Globals.NULL_PORT) {
+                    message.AppendLine("** TDM STATION WITH PORT **");
+                    message.AppendLine("** MUST USE TCM BUFFER TO CHANGE more_info TO NOT BE AWOH **");
+                    message.AppendLine("** MANUAL FIX REQUIRED **");
+                    ManualFixes++;
+                    if (port != Globals.NULL_PORT) Database.ManualPorts.Add(port);
+                    Database.ManualUIDs.Add(pr_stn.UID);
+                } else if (!pr_stn.IsIP() && !pr_stn.AWOH && port == Globals.NULL_PORT) {
+                    message.AppendLine("** TDM STATION WITHOUT PORT **");
+                    message.AppendLine("** MUST USE TCM BUFFER TO CHANGE more_info TO BE AWOH **");
+                    message.AppendLine("** MANUAL FIX REQUIRED **");
+                    ManualFixes++;
+                    if (port != Globals.NULL_PORT) Database.ManualPorts.Add(port);
+                    Database.ManualUIDs.Add(pr_stn.UID);
+                } else {
+                    message.AppendLine("!!! UNKNOWN SITUATION !!!");
+                    message.AppendLine("Please notify David McNutt to evaluate a new scenario");
+                    message.AppendLine("Please include a copy of the customer XLN and swversion");
+                }
+
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS29Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S30 : This audit triggers when there is a missing PR_MOBD
+        internal static bool AuditS30(PR_ST_CPS pr_st_cps) {
+            if (!pr_st_cps.IsIPPort() && pr_st_cps.Port != Globals.NULL_PORT && !pr_st_cps.HasMOBD()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S30");
+                message.AppendLine("Missing PR_MOBD");
+                message.AppendLine($"UID: {pr_st_cps.UID}");
+                message.AppendLine($"Board: {pr_st_cps.Port}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Database.ManualUIDs.Add(pr_st_cps.UID);
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                ManualFixes++;
+                AuditS30Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S31: This audit is used to check for PR_AMW records that are out of order
+        internal static bool AuditS31() {
+            string prevExt = null;
+            string prevUID = null;
+            bool fail;
+
+            var message = new StringBuilder();
+
+            foreach (var pr_amw in Database.PR_AMWs) {
+                fail = false;
+
+                if (prevExt == null) {
+                    prevExt = pr_amw.Extension;
+                    prevUID = pr_amw.UID;
+                }
+                else {
+                    if (pr_amw.Extension == prevExt) {
+                        int check1 = string.Compare(prevUID, pr_amw.UID);
+                        if (check1 > 0) {
+                            fail = true;
+                        }
+                    } else {
+                        int check2 = string.Compare(prevExt, pr_amw.Extension);
+                        if (check2 > 0) {
+                            fail = true;
+                        }
+                    }
+
+                    if (fail) {
+                        message.AppendLine("AUDIT-S31");
+                        message.AppendLine("PR_AMW is out of order");
+                        message.AppendLine($"UID: {pr_amw.ActualUID}");
+                        message.AppendLine($"EXT: {pr_amw.Extension}");
+                        message.AppendLine();
+                        message.AppendLine("** MANUAL FIX REQUIRED **");
+                        message.AppendLine();
+
+                        Corrupted++;
+                        CorruptedStations++;
+                        ManualFixes++;
+                        AuditS31Hits++;
+                    }
+
+                    prevExt = pr_amw.Extension;
+                    prevUID = pr_amw.UID;
+                }
+            }
+
+            if (AuditS31Hits > 0) Globals.GUI.AddOutput(message.ToString());
+            return AuditS31Hits == 0;
+        }
+
+        // AUDIT-S32: This audit checks for duplicate PR_AMW records
+        internal static bool AuditS32(PR_AMW pr_amw) {
+            if (!pr_amw.DupFlagged && pr_amw.HasDuplicates()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S32");
+                message.AppendLine("PR_AMW is duplicate");
+                message.AppendLine($"UID: {pr_amw.ActualUID}");
+                message.AppendLine($"EXT: {pr_amw.Extension}");
+                message.AppendLine();
+
+                var pr_amws = Database.PR_AMWs.FindAll(a => a.ActualUID == pr_amw.ActualUID && a.Extension == pr_amw.Extension);
+                var removes = pr_amws.Count - 1;
+                for (int i = 0; i < removes; i++) {
+                    message.AppendLine(Fixer.Remove.PR_AMW(pr_amw));
+                }
+
+                message.AppendLine();
+
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS32Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-S33: This audit checks for mismatched PR_AMW records
+        internal static bool AuditS33(PR_AMW pr_amw) {
+            if (pr_amw.IsMismatched() || pr_amw.MwlExtMismatch()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S33");
+                message.AppendLine("PR_AMW is mismatched");
+                message.AppendLine($"UID: {pr_amw.ActualUID}");
+                message.AppendLine($"EXT: {pr_amw.UnpackedExt}");
+
+                if (pr_amw.IsMismatched()) {
+                    message.AppendLine();
+                    message.AppendLine(Fixer.Update.PR_AMW(pr_amw));
+                    message.AppendLine();
+                }
+
+                if (pr_amw.MwlExtMismatch()) {
+                    var pr_stn = Database.PR_STNs.Find(a => a.UID == pr_amw.ActualUID);
+
+                    message.AppendLine();
+                    message.AppendLine("** PR_STN has incorrect mwl_ext **");
+                    message.AppendLine();
+                    message.AppendLine($"Station Ext: {pr_stn.StationExt()}");
+                    message.AppendLine($"MWL Ext    : {pr_stn.MWLExt}");
+                    message.AppendLine();
+                    message.AppendLine(Fixer.Update.PR_AMW_REMOVE(pr_amw));
+                    message.AppendLine();
+                    message.AppendLine("REMOVED PR_AMW::");
+                    message.AppendLine($"STATION: {pr_stn.StationExt()}   MWL: {pr_amw.UnpackedExt}");
+                    message.AppendLine();
+                }
+
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS33Hits++;
+                return false;
+            }
+
+            return true;
+        }
+
+        // AUDIT-S34: Check to ensure PR_FEXTs are not orphaned
+        internal static bool AuditS34(PR_FEXT pr_fext) {
+            if (pr_fext.IsStation && !pr_fext.HasUDATA()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S34");
+                message.AppendLine("PR_FEXT is orphaned");
+                message.AppendLine($"UID: {pr_fext.UID}");
+                message.AppendLine($"EXT: {pr_fext.Digits}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_FEXT(pr_fext));
+                message.AppendLine();
+
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS34Hits++;
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool AuditS35(PR_FEXT pr_fext) {
+            if (pr_fext.HasDuplicateUID()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-S35");
+                message.AppendLine("PR_FEXT is duplicate");
+                message.AppendLine($"UID: {pr_fext.UID}");
+                message.AppendLine($"EXT: {pr_fext.Digits}");
+                message.AppendLine();
+
+                //var pr_ext = Database.PR_EXTs.Find(a => a.Digits == pr_fext.Digits);
+                //var pr_fexts = Database.PR_FEXTs.FindAll(a => a.UID == pr_fext.UID);
+
+                //foreach (var fext in pr_fexts) {
+                //    if (fext.UID != pr_ext.UID) {
+                //        message.AppendLine(Fixer.Remove.PR_FEXT(fext));
+                //    }
+                //}
+
+                message.AppendLine();
+
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedStations++;
+                AuditS35Hits++;
+                ManualFixes++;
+                return false;
+            }
+
+            return true;
+        }
+
+            // AUDIT-A01 : This audit triggers when PR_INT_ANNC is missing either PR_IANC_BD or
+            // PR_GM_IANC_BD
+            internal static bool AuditA01(PR_INT_ANNC pr_int_annc) {
+            if (pr_int_annc.AudioGroup == "00" && (!pr_int_annc.HasIANCBD() || !pr_int_annc.HasGMIANCBD())) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A01");
+                message.AppendLine("PR_INT_ANNC is missing board PREC");
+                message.AppendLine($"UID: {pr_int_annc.UID}");
+                message.AppendLine();
+
+                if (pr_int_annc.HasIANCBD() && !pr_int_annc.HasGMIANCBD()) {
+                    message.AppendLine(Fixer.Add.PR_GM_IANC_BD(pr_int_annc.UID, pr_int_annc.Board));
+                } else if (!pr_int_annc.HasIANCBD() && pr_int_annc.HasGMIANCBD()) {
+                    message.AppendLine(Fixer.Add.PR_IANC_BD(pr_int_annc.UID, pr_int_annc.Board, pr_int_annc.IndexLName));
+                } else {
+                    message.AppendLine(Fixer.Add.PR_GM_IANC_BD(pr_int_annc.UID, pr_int_annc.Board));
+                    message.AppendLine(Fixer.Add.PR_IANC_BD(pr_int_annc.UID, pr_int_annc.Board, pr_int_annc.IndexLName));
+                }
+
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                AuditA01Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A02 : This audit checks all the board PRECs for an audio group
+        internal static bool AuditA02(PR_INT_ANNC pr_int_annc) {
+            if (pr_int_annc.AudioGroup == "00") return true;
+            var success = true;
+            var pr_ag_mbrs = Database.PR_AG_MBRs.FindAll(a => a.AudioGroup == pr_int_annc.AudioGroup);
+            foreach (var pr_ag_mbr in pr_ag_mbrs) {
+                var pr_ianc_bd = Database.PR_IANC_BDs.Find(a => a.UID == pr_int_annc.UID && a.Board == pr_ag_mbr.Board);
+                var pr_gm_ianc_bd = Database.PR_GM_IANC_BDs.Find(a => a.UID == pr_int_annc.UID && a.Board == pr_ag_mbr.Board);
+                if (pr_ianc_bd == null || pr_gm_ianc_bd == null) {
+                    success = false;
+                    var message = new StringBuilder();
+                    message.AppendLine("AUDIT-A02");
+                    message.AppendLine("Missing audio group board PRECs");
+                    message.AppendLine($"UID: {pr_int_annc.UID}");
+                    message.AppendLine();
+                    if (pr_ianc_bd != null && pr_gm_ianc_bd == null) {
+                        message.AppendLine(Fixer.Add.PR_GM_IANC_BD(pr_int_annc.UID, pr_ag_mbr.Board));
+                    } else if (pr_ianc_bd == null && pr_gm_ianc_bd != null) {
+                        message.AppendLine(Fixer.Add.PR_IANC_BD(pr_int_annc.UID, pr_ag_mbr.Board, pr_int_annc.IndexLName));
+                    } else {
+                        message.AppendLine(Fixer.Add.PR_GM_IANC_BD(pr_int_annc.UID, pr_ag_mbr.Board));
+                        message.AppendLine(Fixer.Add.PR_IANC_BD(pr_int_annc.UID, pr_ag_mbr.Board, pr_int_annc.IndexLName));
+                    }
+                    Globals.GUI.AddOutput(message.ToString());
+                    Corrupted++;
+                    CorruptedAnnouncements++;
+                    AuditA02Hits++;
+                }
+            }
+            return success;
+        }
+
+        // AUDIT-A03 : This audit triggers when there it a duplicate PR_IANC_BD
+        internal static bool AuditA03(PR_IANC_BD pr_ianc_bd) {
+            if (pr_ianc_bd.HasDuplicates()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A03");
+                message.AppendLine("Duplicate PR_IANC_BD");
+                message.AppendLine($"UID: {pr_ianc_bd.UID}");
+                message.AppendLine($"Board: {pr_ianc_bd.Board}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                ManualFixes++;
+                AuditA03Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A04 : This audit triggers if a PR_EXT with GID of 008c (ANNC)
+        // does not have a PR_INT_ANNC record
+        internal static bool AuditA04(PR_EXT pr_ext) {
+            if (pr_ext.GID == "008c" && !pr_ext.HasINTANNC()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A04");
+                message.AppendLine("Missing PR_INT_ANNC");
+                message.AppendLine($"UID: {pr_ext.UID}");
+                message.AppendLine($"EXT: {pr_ext.Digits}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                ManualFixes++;
+                AuditA04Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A05 : This audit triggers if a PR_INT_ANNC does not have
+        // a PR_EXT record
+        internal static bool AuditA05(PR_INT_ANNC pr_int_annc) {
+            if (!pr_int_annc.HasEXT()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A05");
+                message.AppendLine("PR_INT_ANNC is missing PR_EXT");
+                message.AppendLine($"UID: {pr_int_annc.UID}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                ManualFixes++;
+                AuditA05Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A06 : This audit triggers if a PR_INT_ANNC does not have a PR_UDATA
+        internal static bool AuditA06(PR_INT_ANNC pr_int_annc) {
+            if (!pr_int_annc.HasUDATA()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A06");
+                message.AppendLine("PR_INT_ANNC is missing PR_UDATA");
+                message.AppendLine($"UID: {pr_int_annc.UID}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                ManualFixes++;
+                AuditA06Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A07 : This audit triggers if a PR_UDATA record with GID 008c (ANNC) does
+        // not have a PR_INT_ANNC
+        internal static bool AuditA07(PR_UDATA pr_udata) {
+            if (pr_udata.GID == "008c" && !pr_udata.HasINTANNC()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A07");
+                message.AppendLine("PR_UDATA is missing PR_INT_ANNC");
+                message.AppendLine($"UID: {pr_udata.UID}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                ManualFixes++;
+                AuditA07Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A08 : This audit triggers when there is an AudioGroup mismatch
+        // between PR_INT_ANNC and PR_AN_GRP
+        internal static bool AuditA08(PR_INT_ANNC pr_int_annc) {
+            if (pr_int_annc.HasAGMismatch()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A08");
+                message.AppendLine("PR_INT_ANNC / PR_AN_GRP - AudioGroup Mismatch");
+                message.AppendLine($"UID: {pr_int_annc.UID}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Database.ManualUIDs.Add(pr_int_annc.UID);
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                ManualFixes++;
+                AuditA08Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A09 : This audit triggers when a PR_INT_ANNC is missing it's PR_AN_GRP
+        internal static bool AuditA09(PR_INT_ANNC pr_int_annc) {
+            if (!pr_int_annc.HasANGRP()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A09");
+                message.AppendLine("Missin PR_AN_GRP");
+                message.AppendLine($"UID: {pr_int_annc.UID}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.PR_AN_GRP(pr_int_annc.UID, pr_int_annc.AudioGroup));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                AuditA09Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A10 : This audit triggers when there it a duplicate PR_IANC_BD
+        internal static bool AuditA10(PR_GM_IANC_BD pr_gm_ianc_bd) {
+            if (pr_gm_ianc_bd.HasDuplicates()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A10");
+                message.AppendLine("Duplicate PR_GM_IANC_BD");
+                message.AppendLine($"UID: {pr_gm_ianc_bd.UID}");
+                message.AppendLine($"Board: {pr_gm_ianc_bd.Board}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_GM_IANC_BD(pr_gm_ianc_bd));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                AuditA10Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-A11 : This audit triggers when there is a missing PR_AG_MBR
+        internal static bool AuditA11(PR_GM_IANC_BD pr_gm_ianc_bd, string audiogroup) {
+            if (!pr_gm_ianc_bd.HasAGMBR(audiogroup)) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-A11");
+                message.AppendLine("Missing PR_AG_MBR");
+                message.AppendLine($"UID: {pr_gm_ianc_bd.UID}");
+                message.AppendLine($"Board: {pr_gm_ianc_bd.Board}");
+                message.AppendLine($"AudioGroup: {audiogroup}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedAnnouncements++;
+                ManualFixes++;
+                AuditA11Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-T01 : This audit triggers when a PR_TR_MBR is missing a PR_TRUNK
+        internal static bool AuditT01(PR_TR_MBR pr_tr_mbr) {
+            if (!pr_tr_mbr.HasTRUNK()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T01");
+                message.AppendLine("PR_TR_MBR is missing PR_TRUNK");
+                message.AppendLine($"UID: {pr_tr_mbr.UID}");
+                message.AppendLine($"TrunkGroup: {pr_tr_mbr.TrunkGroup}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                ManualFixes++;
+                AuditT01Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-T02 : This audit triggers when a PR_TRUNK is missing a PR_TR_MBR
+        internal static bool AuditT02(PR_TRUNK pr_trunk) {
+            if (!pr_trunk.HasTRMBR()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T02");
+                message.AppendLine("PR_TRUNK is missing PR_TR_MBR");
+                message.AppendLine($"UID: {pr_trunk.UID}");
+                message.AppendLine($"TrunkGroup: {pr_trunk.TrunkGroup}");
+                message.AppendLine();
+                message.AppendLine("** MANUAL FIX REQUIRED **");
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                ManualFixes++;
+                AuditT02Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-T03 : This audit triggers when a PR_TRUNK is missing either
+        // PR_PORT_UID or PR_MOPORT
+        internal static bool AuditT03(PR_TRUNK pr_trunk) {
+            if (!pr_trunk.HasMOPORT() || !pr_trunk.HasPORTUID()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T03");
+                message.AppendLine("PR_TRUNK is missing port PRECs");
+                message.AppendLine($"UID: {pr_trunk.UID}");
+                message.AppendLine($"TrunkGroup: {pr_trunk.TrunkGroup}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Add.TrunkPort(pr_trunk));
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                AuditT03Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-T04 : This audit triggers when there are duplicate PR_ACD_TRUNK records
+        internal static bool AuditT04(PR_ACD_TRUNK pr_acd_trunk) {
+            if (pr_acd_trunk.HasDuplicates()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T04");
+                message.AppendLine("Duplicate PR_ACD_TRUNK record");
+                message.AppendLine($"TG UID: {pr_acd_trunk.TrunkGroupUID}");
+                message.AppendLine($"MEMBER UID: {pr_acd_trunk.TrunkMemberUID}");
+
+                var pr_acd_trunks =
+                    Database.PR_ACD_TRUNKs.FindAll(a => a.TrunkGroupUID == pr_acd_trunk.TrunkGroupUID &&
+                        a.TrunkMemberUID == pr_acd_trunk.TrunkMemberUID);
+                message.AppendLine($"COUNT: {pr_acd_trunks.Count}");
+
+                foreach (var trunk in pr_acd_trunks) { trunk.Flagged = true; }
+
+                message.AppendLine();
+
+                var count = pr_acd_trunks.Count;
+                while (count > 1) {
+                    message.AppendLine(Fixer.Remove.PR_ACD_TRUNK(pr_acd_trunk.TrunkGroupUID, pr_acd_trunk.TrunkMemberUID));
+                    count--;
+                }
+                
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                AuditT04Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-T05 : This audit checks if there are PR_ACD_TRUNKs on trunk groups that are not measured
+        internal static bool AuditT05(PR_TR_GRP pr_tr_grp) {
+            if (!pr_tr_grp.Measured && pr_tr_grp.HasACDTRUNK()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T05");
+                message.AppendLine("PR_ACD_TRUNK exists on unmeasured trunk group");
+                message.AppendLine($"UID: {pr_tr_grp.UID}");
+
+                var pr_acd_trunks = Database.PR_ACD_TRUNKs.FindAll(a => a.TrunkGroupUID == pr_tr_grp.UID);
+                message.AppendLine($"COUNT: {pr_acd_trunks.Count}");
+                message.AppendLine();
+
+                foreach (var pr_acd_trunk in pr_acd_trunks) {
+                    message.AppendLine(Fixer.Remove.PR_ACD_TRUNK(pr_acd_trunk.TrunkGroupUID, pr_acd_trunk.TrunkMemberUID));
+                }
+
+                message.AppendLine();
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                AuditT05Hits++;
+                return false;
+            }
+
+            return true;
+        }
+
+        // AUDIT-T06 : This audit checks to ensure that measured trunk members have a PR_ACD_TRUNK
+        internal static bool AuditT06(bool measured, PR_TR_MBR pr_tr_mbr) {
+            if (measured && !pr_tr_mbr.Flagged && !pr_tr_mbr.HasACDTRUNK()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T06");
+                message.AppendLine("PR_ACD_TRUNK is missing on measured trunk member");
+                message.AppendLine($"UID: {pr_tr_mbr.UID}");
+                message.AppendLine($"TG: {pr_tr_mbr.TrunkGroup}");
+                message.AppendLine();
+                var fix = Fixer.Add.PR_ACD_TRUNK(pr_tr_mbr);
+                if (fix == null) {
+                    var pr_tr_grp = Database.PR_TR_GRPs.Find(a => a.UID == pr_tr_mbr.TrunkGroup);
+                    message.AppendLine("** NO PR_ACD_TRUNKs FOR TRUNK GROUP **");
+                    message.AppendLine("** NEED TO CHANGE meas_by FIELD ON PR_TR_GRP TO 'none' (x00) USING TCM BUFFER **");
+                    message.AppendLine($"** THEN USING SAT RESET MEASURED BY FIELD TO : {pr_tr_grp.MeasuredBy()} **");
+                    var pr_tr_mbrs = Database.PR_TR_MBRs.FindAll(a => a.TrunkGroup == pr_tr_mbr.TrunkGroup);
+                    foreach (var item in pr_tr_mbrs) item.Flagged = true;
+                    ManualFixes++;
+                } else { message.AppendLine(fix); }
+                
+                message.AppendLine();
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                AuditT06Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-T07 : Check PR_MOPORT for missing PR_PORT_UID
+        internal static bool AuditT07(PR_MOPORT pr_moport) {
+            if (!pr_moport.HasPORTUID()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T07");
+                message.AppendLine("PR_MOPORT is missing PR_PORT_UID");
+                message.AppendLine($"Port: {pr_moport.Port}");
+                message.AppendLine();
+                if (pr_moport.HasTRUNK()) {
+                    var pr_trunk = Database.PR_TRUNKs.Find(a => a.Port == pr_moport.Port);
+                    message.AppendLine(Fixer.Add.TrunkPort(pr_trunk));
+                } else {
+                    message.AppendLine(Fixer.Remove.PR_MOPORT(pr_moport.Port));
+                }
+                message.AppendLine();
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                AuditT07Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        // AUDIT-T08 : Check PR_PORT_UID for missing PR_MOPORTs
+        internal static bool AuditT08(PR_PORT_UID pr_port_uid) {
+            if (!pr_port_uid.HasMOPORT()) {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T08");
+                message.AppendLine("PR_PORT_UID is missing PR_MOPORT");
+                message.AppendLine($"Port: {pr_port_uid.Port}");
+                message.AppendLine($"UID: {pr_port_uid.UID}");
+                message.AppendLine();
+                if (pr_port_uid.HasTRUNK()) {
+                    var pr_trunk = Database.PR_TRUNKs.Find(a => a.Port == pr_port_uid.Port);
+                    message.AppendLine(Fixer.Add.TrunkPort(pr_trunk));
+                } else {
+                    message.AppendLine(Fixer.Remove.PR_PORT_UID(pr_port_uid.Port));
+                }
+                message.AppendLine();
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                AuditT08Hits++;
+                return false;
+            }
+            return true;
+        }
+
+        internal static bool AuditT09(PR_MOPORT pr_moport) {
+            if (!pr_moport.HasTRUNK() && pr_moport.TGUID().Substring(0, 4) == "0005") {
+                var message = new StringBuilder();
+                message.AppendLine("AUDIT-T09");
+                message.AppendLine("PR_MOPORT is missing PR_TRUNK");
+                message.AppendLine($"Port: {pr_moport.Port}");
+                message.AppendLine($"UID: {pr_moport.TGUID()}");
+                message.AppendLine();
+                message.AppendLine(Fixer.Remove.PR_MOPORT(pr_moport.Port));
+                if (pr_moport.HasPORTUID()) {
+                    message.AppendLine(Fixer.Remove.PR_PORT_UID(pr_moport.Port));
+                }
+                message.AppendLine();
+                Globals.GUI.AddOutput(message.ToString());
+                Corrupted++;
+                CorruptedTrunks++;
+                AuditT09Hits++;
+                return false;
+            }
+
+            return true;
+        }
+    }
+}
+
+
+====================================================================
+FILE: Database.cs
+====================================================================
+
+/*
+ * Auditor3 :: Database
+ * 
+ * This class stores and manages the objects that are created from the PRECParser.
+ * 
+ * Auditor3 is developed and maintained by David McNutt -
+ * 
+ */
+
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace Auditor3 {
+    internal static class Database {
+
+        internal static List<PR_AMW> PR_AMWs;               // The list of PR_AMW records
+        internal static List<PR_BRIDGE> PR_BRIDGEs;         // The list of PR_BRIDGE records
+        internal static List<PR_BUTTON> PR_BUTTONs;         // The list of PR_BUTTON records
+        internal static List<PR_EXT> PR_EXTs;               // The list of PR_EXT records
+        internal static List<PR_FEXT> PR_FEXTs;             // The list of PR_FEXT records
+        internal static List<PR_MOBD> PR_MOBDs;             // The list of PR_MOBD records
+        internal static List<PR_MOPORT> PR_MOPORTs;         // The list of PR_MOPORT records
+        internal static List<PR_OPT_STN> PR_OPT_STNs;       // The list of PR_OPT_STN records
+        internal static List<PR_PORT_UID> PR_PORT_UIDs;     // The list of PR_PORT_UID records
+        internal static List<PR_ST_CPS> PR_ST_CPSs;         // The list of PR_ST_CPS records
+        internal static List<PR_STN> PR_STNs;               // The list of PR_STN records
+        internal static List<PR_TTISET> PR_TTISETs;         // The list of PR_TTISET records
+        internal static List<PR_UDATA> PR_UDATAs;           // The list of PR_UDATA records
+        internal static List<PR_XMAP> PR_XMAPs;             // The list of PR_XMAP records
+        //internal static List<PR_BARRY> PR_BARRYs;
+
+        internal static List<PR_AN_GRP> PR_AN_GRPs;         // The list of PR_AN_GRP records
+        internal static List<PR_AG_MBR> PR_AG_MBRs;         // The list of PR_AG_MBR records
+        internal static List<PR_AUDIO_GRP> PR_AUDIO_GRPs;   // The list of PR_AUDIO_GRP records
+        internal static List<PR_GM_IANC_BD> PR_GM_IANC_BDs; // The list of PR_GM_IANC_BD records
+        internal static List<PR_IANC_BD> PR_IANC_BDs;       // The list of PR_IANC_BD records
+        internal static List<PR_INT_ANNC> PR_INT_ANNCs;     // The list of PR_INT_ANNC records
+
+        internal static List<PR_ACD_TRUNK> PR_ACD_TRUNKs;   // The list of PR_ACD_TRUNK records
+        internal static List<PR_TR_GRP> PR_TR_GRPs;         // The list of PR_TR_GRP records
+        internal static List<PR_TR_MBR> PR_TR_MBRs;         // The list of PR_TR_MBR records
+        internal static List<PR_TRUNK> PR_TRUNKs;           // The list of PR_TRUNK records
+
+        internal static List<MissingStationType> Missing;   // The list of missing station types
+
+        internal static List<string> ManualPorts;           // List of ports that need manual fixing
+        internal static List<string> ManualUIDs;            // List of UIDs that need manual fixing
+
+        internal static int FreePortIndex;                  // Index used for checking for free ports
+
+        // This method initializes the database during application startup
+        internal static void Initialize() {
+            PR_AMWs = new List<PR_AMW>();
+            PR_BRIDGEs = new List<PR_BRIDGE>();
+            PR_BUTTONs = new List<PR_BUTTON>();
+            PR_EXTs = new List<PR_EXT>();
+            PR_FEXTs = new List<PR_FEXT>();
+            PR_MOBDs = new List<PR_MOBD>();
+            PR_MOPORTs = new List<PR_MOPORT>();
+            PR_OPT_STNs = new List<PR_OPT_STN>();
+            PR_PORT_UIDs = new List<PR_PORT_UID>();
+            PR_ST_CPSs = new List<PR_ST_CPS>();
+            PR_STNs = new List<PR_STN>();
+            PR_TTISETs = new List<PR_TTISET>();
+            PR_UDATAs = new List<PR_UDATA>();
+            PR_XMAPs = new List<PR_XMAP>();
+
+            PR_AN_GRPs = new List<PR_AN_GRP>();
+            PR_AG_MBRs = new List<PR_AG_MBR>();
+            PR_GM_IANC_BDs = new List<PR_GM_IANC_BD>();
+            PR_IANC_BDs = new List<PR_IANC_BD>();
+            PR_INT_ANNCs = new List<PR_INT_ANNC>();
+            PR_AUDIO_GRPs = new List<PR_AUDIO_GRP>();
+
+            PR_ACD_TRUNKs = new List<PR_ACD_TRUNK>();
+            PR_TR_GRPs = new List<PR_TR_GRP>();
+            PR_TR_MBRs = new List<PR_TR_MBR>();
+            PR_TRUNKs = new List<PR_TRUNK>();
+
+            Missing = new List<MissingStationType>();
+            FreePortIndex = 0;
+
+            ManualPorts = new List<string>();
+            ManualUIDs = new List<string>();
+        }
+
+        // This method is used to show the database totals
+        internal static void ShowTotals() {
+            // Create a stringbuilder for the counts
+            var counts = new StringBuilder();
+
+            // Display the counts
+            if (Globals.STATION_AUDITS) {
+                counts.AppendLine($"PR_AMW        : {PR_AMWs.Count}");
+                counts.AppendLine($"PR_BRIDGE     : {PR_BRIDGEs.Count}");
+                counts.AppendLine($"PR_BUTTON     : {PR_BUTTONs.Count}");
+                counts.AppendLine($"PR_EXT        : {PR_EXTs.Count}");
+                counts.AppendLine($"PR_FEXT       : {PR_FEXTs.Count}");
+                counts.AppendLine($"PR_MOBD       : {PR_MOBDs.Count}");
+                counts.AppendLine($"PR_MOPORT     : {PR_MOPORTs.Count}");
+                counts.AppendLine($"PR_OPT_STN    : {PR_OPT_STNs.Count}");
+                counts.AppendLine($"PR_PORT_UID   : {PR_PORT_UIDs.Count}");
+                counts.AppendLine($"PR_ST_CPS     : {PR_ST_CPSs.Count}");
+                counts.AppendLine($"PR_STN        : {PR_STNs.Count}");
+                counts.AppendLine($"PR_TTISET     : {PR_TTISETs.Count}");
+                counts.AppendLine($"PR_UDATA      : {PR_UDATAs.Count}");
+                counts.AppendLine($"PR_XMAP       : {PR_XMAPs.Count}");
+                counts.AppendLine();
+            }
+            if (Globals.ANNOUNCEMENT_AUDITS) {
+                counts.AppendLine($"PR_AG_MBR     : {PR_AG_MBRs.Count}");
+                counts.AppendLine($"PR_AN_GRP     : {PR_AN_GRPs.Count}");
+                counts.AppendLine($"PR_AUDIO_GRP  : {PR_AUDIO_GRPs.Count}");
+                counts.AppendLine($"PR_EXT        : {PR_EXTs.Count}");
+                counts.AppendLine($"PR_GM_IANC_BD : {PR_GM_IANC_BDs.Count}");
+                counts.AppendLine($"PR_IANC_BD    : {PR_IANC_BDs.Count}");
+                counts.AppendLine($"PR_INT_ANNC   : {PR_INT_ANNCs.Count}");
+                counts.AppendLine($"PR_UDATA      : {PR_UDATAs.Count}");
+                counts.AppendLine();
+            }
+            if (Globals.TRUNK_AUDITS) {
+                counts.AppendLine($"PR_ACD_TRUNK  : {PR_ACD_TRUNKs.Count}");
+                counts.AppendLine($"PR_MOPORT     : {PR_MOPORTs.Count}");
+                counts.AppendLine($"PR_PORT_UID   : {PR_PORT_UIDs.Count}");
+                counts.AppendLine($"PR_TR_GRP     : {PR_TR_GRPs.Count}");
+                counts.AppendLine($"PR_TR_MBR     : {PR_TR_MBRs.Count}");
+                counts.AppendLine($"PR_TRUNK      : {PR_TRUNKs.Count}");
+                counts.AppendLine();
+            }
+
+            // Display the counts
+            Globals.GUI.AddOutput(counts.ToString());
+        }
+
+        // This method is used to validate all the required PRECs have been provided
+        internal static bool ValidatePRECs() {
+            var success = true;
+
+            if (Globals.STATION_AUDITS && (PR_BUTTONs.Count == 0 ||
+                PR_EXTs.Count == 0 || PR_FEXTs.Count == 0 || PR_MOPORTs.Count == 0 ||
+                PR_PORT_UIDs.Count == 0 || PR_ST_CPSs.Count == 0 || PR_STNs.Count == 0 ||
+                PR_UDATAs.Count == 0)) {
+                success = false;
+            }
+            
+            if (Globals.STATION_AUDITS && (PR_BRIDGEs.Count == 0 && 
+                PR_BUTTONs.Where(a => a.Bridged).Count() > 0)) {
+                success = false;
+            }
+
+            if (Globals.ANNOUNCEMENT_AUDITS && (PR_GM_IANC_BDs.Count == 0 || PR_IANC_BDs.Count == 0 ||
+                PR_INT_ANNCs.Count == 0 || PR_UDATAs.Count == 0 || PR_EXTs.Count == 0)) {
+                success = false;
+            }
+
+            if (Globals.ANNOUNCEMENT_AUDITS && 
+                (PR_INT_ANNCs.FindAll(a => a.AudioGroup != "00").Count != 0) && PR_AG_MBRs.Count == 0) {
+                success = false;
+            }
+
+            if (Globals.TRUNK_AUDITS && (PR_MOPORTs.Count == 0 || PR_PORT_UIDs.Count == 0 ||
+                PR_TR_MBRs.Count == 0 || PR_TRUNKs.Count == 0 || PR_TR_GRPs.Count == 0)) {
+                success = false;
+            }
+
+            if (!success) {
+                Globals.GUI.AddOutput("** YOU HAVE NOT PROVIDED ALL THE REQUIRED PRECS **");
+                Globals.GUI.AddOutput("** PLEASE REFER TO THE PREC LIST UNDER THE HELP MENU **");
+                Globals.GUI.AddOutput("");
+            }
+            return success;
+        }
+
+        // This method is for adding a missing station type record
+        internal static void AddMissingStationType(string type, string uid) {
+            var missing = new MissingStationType { Type = type, UID = uid };
+            Missing.Add(missing);
+        }
+
+        // This method is used to process missing station types
+        internal static void ProcessMissingStationTypes() {
+            // Check if we have any
+            if (Missing.Count == 0) return;
+
+            // Loop through them
+            foreach (var missing in Missing) {
+                var pr_st_cps = PR_ST_CPSs.Find(a => a.UID == missing.UID);
+                if (pr_st_cps != null) { missing.Port = pr_st_cps.Port; }
+                if (missing.Port == null || missing.Port == Globals.NULL_PORT) {
+                    var pr_port_uid = PR_PORT_UIDs.Find(a => a.UID == missing.UID);
+                    if (pr_port_uid != null) missing.Port = pr_port_uid.Port;
+                }
+                if (missing.Port != null && missing.Port != Globals.NULL_PORT) {
+                    var pr_moport = PR_MOPORTs.Find(a => a.Port == missing.Port);
+                    if (pr_moport != null) missing.MO = pr_moport.MO;
+                }
+                Globals.GUI.AddOutput($"MISSING STATION TYPE - TYPE: {missing.Type} PORT: {missing.Port} MO: {missing.MO}");
+            }
+            Globals.GUI.AddOutput("");
+        }
+
+        // This method is for finding an unused IP port
+        internal static string FindUnusedIPPort() {
+            // Declare variables we need
+            var found = false;
+            string port = null;
+
+            // Loop while we havent found a port
+            while (!found) {
+                // Create the port we want to check for using the index
+                var check = $"7f{FreePortIndex.ToString("X").PadLeft(6, '0').ToLower()}";
+
+                // Increment the index
+                FreePortIndex++;
+
+                // Check if we have any precs using this port
+                var pr_st_cps = PR_ST_CPSs.Find(a => a.Port == check);
+                var pr_port_uid = PR_PORT_UIDs.Find(a => a.Port == check);
+                var pr_moport = PR_MOPORTs.Find(a => a.Port == check);
+                if (pr_st_cps != null || pr_port_uid != null || pr_moport != null) continue;
+
+                // We have a winner
+                found = true;
+                port = check;
+            }
+
+            // Return the found port
+            return port;
+        }
+    }
+}
+
+
+====================================================================
+FILE: Encrypt.cs
+====================================================================
+
+/*
+ * Auditor3 :: Encrypt
+ * 
+ * This class defines the encryption mechanisms of the application.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace Auditor3 {
+    internal static class Encrypt {
+        internal const string Key =                 // The AES encryption key
+            "ZUExejVUU0pKOXJGanAvZ1ZUMG1hUT09LHJlTWc0U3Z2bVhBdjdiUVRFenc5STEzVXJWWUtGYkx4NTZmRWQ1N0Z5bDA9";
+        internal const string Salt = "Cent1uriP2";  // The salt value
+
+        // Method for generating an AES encryption key
+        internal static string GenerateKey() {
+            using var encryption = Aes.Create();
+            encryption.KeySize = 256;
+            encryption.BlockSize = 128;
+            encryption.Mode = CipherMode.CBC;
+            encryption.Padding = PaddingMode.PKCS7;
+
+            encryption.GenerateIV();
+            var iv = Convert.ToBase64String(encryption.IV);
+
+            encryption.GenerateKey();
+            var key = Convert.ToBase64String(encryption.Key);
+
+            var complete = iv + "," + key;
+
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes(complete));
+        }
+
+        // Method for encrypting a string
+        internal static string EncryptString(string input) {
+            input = Salt + input;
+
+            var keyParts = Encoding.UTF8.GetString(Convert.FromBase64String(Key)).Split(',');
+            var ivBytes = Convert.FromBase64String(keyParts[0]);
+            var keyBytes = Convert.FromBase64String(keyParts[1]);
+
+            using var encryption = Aes.Create();
+            encryption.KeySize = 256;
+            encryption.BlockSize = 128;
+            encryption.Mode = CipherMode.CBC;
+            encryption.Padding = PaddingMode.PKCS7;
+            encryption.IV = ivBytes;
+            encryption.Key = keyBytes;
+
+            var array = Encoding.UTF8.GetBytes(input);
+            using var crypto = encryption.CreateEncryptor();
+            var cipher = crypto.TransformFinalBlock(array, 0, array.Length);
+            return Convert.ToBase64String(cipher);
+        }
+
+        // Method for decrypting a string
+        public static string DecryptString(string input) {
+            var keyParts = Encoding.UTF8.GetString(Convert.FromBase64String(Key)).Split(',');
+            var ivBytes = Convert.FromBase64String(keyParts[0]);
+            var keyBytes = Convert.FromBase64String(keyParts[1]);
+
+            using var encryption = Aes.Create();
+            encryption.KeySize = 256;
+            encryption.BlockSize = 128;
+            encryption.Mode = CipherMode.CBC;
+            encryption.Padding = PaddingMode.PKCS7;
+            encryption.IV = ivBytes;
+            encryption.Key = keyBytes;
+
+            var array = Convert.FromBase64CharArray(input.ToCharArray(), 0, input.Length);
+            using var crypto = encryption.CreateDecryptor();
+            var decrypted = Encoding.UTF8.GetString(crypto.TransformFinalBlock(array, 0, array.Length));
+
+            return decrypted.Substring(Salt.Length, decrypted.Length - Salt.Length);
+        }
+    }
+}
+
+
+====================================================================
+FILE: Globals.cs
+====================================================================
+
+/*
+ * Auditor3 :: Globals
+ * 
+ * This class stores global variables, references to non-static objects, and common helper methods.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Serialization;
+
+namespace Auditor3 {
+    internal static class Globals {
+
+        internal const int VERSION_MAJOR = 4;           // The major version number
+        internal const int VERSION_MINOR = 0;           // The minor version number
+        internal const int BUILD_NUMBER = 35;           // The build number (from version 1.0)
+        internal const bool VERSION_DEV = true;         // Flag for if this is a development build
+
+        internal static MainWindow GUI;                 // Reference to the GUI
+        internal static ToolsAConnection TOOLSA;        // The connection to the ToolsA server
+        internal static DRCCDConnection DRCCD;          // The connection to the DRCCD server
+        internal static CMConnection CM;                // The connection to the CM
+
+        internal static string CONNECT_IP;              // The lab IP to connect to
+        internal static string CONNECT_PORT;            // The live port to connect to
+
+        internal static State STATE;                    // The current state of the application
+        internal static Process PROCESS;                // The current process that is running
+        internal static Mode MODE;                      // The current mode of the application
+
+        internal static CMRelease CM_RELEASE;           // The CM release being worked on
+
+        internal static DateTime START_TIME;            // The time a process started
+
+        internal static bool PRECS_LOADED;              // Flag tracking if there are PRECs loaded
+        internal static bool AUDIT_COMPLETE;            // Flag tracking if an audit has been run
+        internal static bool CANCEL;                    // Flag tracking if we are cancelling
+        internal static bool STATION_AUDITS;            // Flag tracking if we are doing station audits
+        internal static bool TRUNK_AUDITS;              // Flag tracking if we are doing trunk audits
+        internal static bool ANNOUNCEMENT_AUDITS;       // Flag tracking if we are doing announcement audits
+        internal static bool WYLD_STALLYN;              // Flag tracking if Wyld Stallyn Mode is active
+
+        internal static UserData USER_DATA;             // The user configuration
+        internal static bool IS_ADMIN;                  // Flag for if the user has admin features
+
+        internal const int REFRESH_TIMER = 250;         // Time in ms between GUI refreshes
+        internal static TimeSpan SFTP_TIMEOUT = new TimeSpan(0, 0, 30);
+        internal static TimeSpan CLI_CMD_TIMEOUT = new TimeSpan(0, 0, 30);
+        internal static TimeSpan SAT_CMD_TIMEOUT = new TimeSpan(0, 0, 30);
+        internal static TimeSpan TCM_CMD_TIMEOUT = new TimeSpan(0, 0, 30);
+        internal static int TCM_PAGINATION = 50000;      
+
+        internal const string NULL_PORT = "00000000";   // The value of a null port in CM translations
+        internal const string NULL_UID = "00000000";    // The value of a null UID in CM translations
+
+        // Directory definitions
+        internal static string BASE_DIR = AppDomain.CurrentDomain.BaseDirectory;
+        internal static string REPORT_DIR = BASE_DIR + "reports\\";
+
+        // File definitions
+        internal static string USER_DATA_FILE = BASE_DIR + "user.dat";
+        internal static string PRECS_FILE = BASE_DIR + "precs.corr";
+        internal static string XLN_FILE = BASE_DIR + "auditor_xln1.gz";
+        internal static string SCRIPT_FILE = BASE_DIR + "generated_script";
+
+        internal static string[] WORKING_PREC;
+
+        internal static string UPDATE_FILE_TOOLSA = "/home1/harrisb/auditor/updates/update_info.xml";
+        internal static string CRASH_FOLDER_TOOLSA = "/home1/harrisb/auditor/crash_reports/";
+        internal static string UPDATE_FILE = BASE_DIR + "update_info.xml";
+        internal static string UPDATE_PACKAGE = BASE_DIR + "update.zip";
+        internal static string UPDATER = BASE_DIR + "updater.exe";
+
+        internal static bool LABS_LOADED;
+        internal static string CM_LABS_FILE = "/home1/harrisb/auditor/labs/cmlabs.xml";
+        internal static string MG_LABS_FILE = "/home1/harrisb/auditor/labs/mglabs.xml";
+        internal static string CM_PATCHES_FILE = "/home1/harrisb/auditor/labs/cmpatches.xml";
+        internal static string CM_LABS_LOCAL_FILE = BASE_DIR + "cmlabs.xml";
+        internal static string MG_LABS_LOCAL_FILE = BASE_DIR + "mglabs.xml";
+        internal static string CM_PATCHES_LOCAL_FILE = BASE_DIR + "cmpatches.xml";
+
+        internal static List<LabInfo> CM_LABS;
+        internal static List<LabInfo> MG_LABS;
+        internal static List<PatchInfo> CM_PATCHES;
+
+        // This method is used to generate the version string
+        internal static string VERSION() {
+            var version = $"{VERSION_MAJOR}.{VERSION_MINOR}";
+            if (VERSION_DEV) version += "d";
+            version += $" ({BUILD_NUMBER})";
+            return version;
+        }
+
+        // This method is used to generate report filenames
+        internal static string REPORT(string type) {
+            return $"{REPORT_DIR}{type}_{TIMESLICE()}.log";
+        }
+
+        // This method is used to clean the special characters from a string
+        internal static string CLEAN(string input) {
+            var clean = new StringBuilder();
+            foreach (char c in input) {
+                if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' ||
+                    c == ' ' || c == '\n') {
+                    clean.Append(c);
+                }
+            }
+            return clean.ToString();
+        }
+
+        // This method generates a timestamp
+        internal static string TIMESTAMP() { return DateTime.Now.ToString("yyyy-MM-dd-HH:mm:ss"); }
+
+        // This method generates a timeslice for adding to filenames
+        internal static string TIMESLICE() { return DateTime.Now.ToString("yyyyMMdd_HHmmss"); }
+
+        // This method serialized an object to an XML string
+        internal static string SERIALIZE(object input) {
+            try {
+                var writer = new StringWriter(new StringBuilder());
+                var serializer = new XmlSerializer(input.GetType());
+                serializer.Serialize(writer, input);
+                return writer.ToString();
+            } catch (Exception) {
+                return null;
+            }
+        }
+
+        // This method deserializes an XML string to an object
+        internal static T DESERIALIZE<T>(string input) {
+            try {
+                var reader = XmlReader.Create(new StringReader(input));
+                var deserializer = new XmlSerializer(typeof(T));
+                return (T)deserializer.Deserialize(reader);
+            } catch (Exception) {
+                return default(T);
+            }
+        }
+
+        // This method is for validating a string is a valid port number
+        internal static bool CHECK_PORT(string input) {
+            try {
+                var port = Convert.ToUInt16(input);
+                return port > 0;
+            } catch (Exception) {
+                return false;
+            }
+        }
+
+        // This method is for validating a string is a valid IP address
+        internal static bool CHECK_IP(string input) {
+            try {
+                var ip = IPAddress.Parse(input);
+                return true;
+            } catch (Exception) {
+                return false;
+            }
+        }
+
+        // Method to grab the last lines of a string (for pulling EECCRs from list audits)
+        internal static string LAST_LINES(string text) {
+            var match = Regex.Match(text, "^.*$", RegexOptions.Multiline | RegexOptions.RightToLeft);
+            var lines = "";
+
+            int count = 0;
+
+            while (match.Success && count < 7) {
+                if (string.IsNullOrEmpty(match.Value)) {
+                    match = match.NextMatch();
+                    continue;
+                }
+
+                lines = match.Value + Environment.NewLine + lines;
+                match = match.NextMatch();
+                count++;
+            }
+
+            return lines;
+        }
+
+        // Method to reverse a string
+        internal static string REVERSE_STRING(string input) {
+            var chars = input.ToCharArray();
+            for (int i = 0, j = input.Length - 1; i < j; i++, j--) {
+                chars[i] = input[j];
+                chars[j] = input[i];
+            }
+            return new string(chars);
+        }
+
+        // Method to get an AMW extension
+        internal static string AMW_EXT(string input1, string input2) {
+            return input2 + input1;
+        }
+
+        // Method to unpack an extension
+        internal static string UNPACK_EXTENSION(string input) {
+            var ext = REVERSE_STRING(input);
+            var index = ext.IndexOf('0');
+            if (index != -1) ext = ext.Substring(0, index);
+            return ext.Replace('a', '0');
+        }
+    }
+}
+
+
+====================================================================
+FILE: MainWindow.xaml
+====================================================================
+
+<Window x:Class="Auditor3.MainWindow" 
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+        mc:Ignorable="d" 
+        Closing="WindowClosing"
+        Background="{DynamicResource ThemeBackgroundBrush}">
+    <!-- Dynamic background for Dark Mode -->
+
+    <Grid Style="{StaticResource StandardGrid}" Margin="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <!-- Menu -->
+            <RowDefinition Height="*" />
+            <!-- Main Content -->
+            <RowDefinition Height="Auto" />
+            <!-- Status Bar -->
+        </Grid.RowDefinitions>
+
+        <!-- MENU BAR -->
+        <Menu Style="{StaticResource StandardMenu}" Grid.Row="0">
+            <MenuItem Style="{StaticResource StandardMenuItem}" Header="_File">
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_User Data" Click="Click_UserData" />
+                <Separator />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="E_xit" Click="Click_Exit" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Name="WyldStallyn" Header="Wyld Stallyn Mode" 
+                          IsCheckable="True" IsChecked="False" Click="Click_WyldStallynMode" />
+            </MenuItem>
+            <MenuItem Style="{StaticResource StandardMenuItem}" Header="_Tools">
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Pull XLN" Name="PullXLNButton" Click="Click_PullXLN" IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Run Script (Local)" Name="RunLocalScriptButton" Click="Click_RunLocalScript" IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Run Script (ToolsA)" Name="RunToolsAScriptButton" Click="Click_RunToolsAScript" IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Script Generator" Click="Click_ScriptGenerator" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Stage Lab" Name="StageLabButton" Click="Click_StageLab" IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="WEBASG TEST" Click="Click_WebASGTest" />
+            </MenuItem>
+            <MenuItem Style="{StaticResource StandardMenuItem}" Header="DSCRIPTS">
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="jirasearchd" Name="JiraSearchdMenu" IsEnabled="False" Click="Click_JiraSearchd" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="findjira" Name="FindJiraMenu" IsEnabled="False" Visibility="Collapsed" Click="Click_FindJira" />
+            </MenuItem>
+            <MenuItem Style="{StaticResource StandardMenuItem}" Header="_Connections">
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_ToolsA">
+                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Connect" Name="ConnectToolsAMenu" Click="Click_ConnectToolsA" />
+                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Disconnect" Name="DisconnectToolsAMenu" Click="Click_DisconnectToolsA" />
+                </MenuItem>
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_DRCCD">
+                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Connect" Name="ConnectDRCCDMenu" Click="Click_ConnectDRCCD" />
+                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Disconnect" Name="DisconnectDRCCDMenu" Click="Click_DisconnectDRCCD" />
+                </MenuItem>
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_CM">
+                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Disconnect" Name="DisconnectCMMenu" Click="Click_DisconnectCM" />
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Style="{StaticResource StandardMenuItem}" Name="AdminMenu" Header="_Admin" Visibility="Collapsed">
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="CM Labs" Click="Click_CMLabAdmin" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="MG Labs" Click="Click_MGLabAdmin" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="CM Patches" Click="Click_CMPatchAdmin" />
+            </MenuItem>
+            <MenuItem Style="{StaticResource StandardMenuItem}" Header="_Help">
+                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_PREC List" Click="Click_PRECList" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Name="LabsMenuItem" Header="_Labs" Click="Click_Labs" IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}" Name="ReinitLabInfo" Header="Reload Lab Info" Click="Click_ReinitLabInfo" IsEnabled="False" />
+            </MenuItem>
+        </Menu>
+
+        <!-- MAIN CONTENT AREA WITH SPLITTERS -->
+        <Grid Grid.Row="1" Margin="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="5" />
+                <!-- Splitter 1 -->
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="5" />
+                <!-- Splitter 2 -->
+                <ColumnDefinition Width="350" />
+                <!-- Controls panel fixed minimum width -->
+            </Grid.ColumnDefinitions>
+
+            <!-- COLUMN 0: DATA & STATUS -->
+            <Grid Grid.Column="0" Margin="0,0,8,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="2*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="1*" />
+                </Grid.RowDefinitions>
+
+                <Label Style="{StaticResource StandardLabel}" Content="-- DATA --" Grid.Row="0" />
+                <TextBox Style="{StaticResource FillTextBox}" Name="DataBox" IsReadOnly="False" Grid.Row="1" />
+
+                <Label Style="{StaticResource StandardLabel}" Content="-- STATUS --" Grid.Row="2" Margin="0,8,0,0" />
+                <TextBox Style="{StaticResource FillTextBox}" Name="StatusBox" IsReadOnly="True" Grid.Row="3" />
+            </Grid>
+
+            <!-- SPLITTER 1 -->
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWE" />
+
+            <!-- COLUMN 2: OUTPUT -->
+            <Grid Grid.Column="2" Margin="8,0,8,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Label Style="{StaticResource StandardLabel}" Name="OutputLabel" Content="-- OUTPUT --" Grid.Row="0" />
+                <TextBox Style="{StaticResource FillTextBox}" Name="OutputBox" IsReadOnly="True" Grid.Row="1" />
+            </Grid>
+
+            <!-- SPLITTER 2 -->
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWE" />
+
+            <!-- COLUMN 4: CONTROLS (Wrapped in ScrollViewer) -->
+            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="8,0,0,0">
+                <StackPanel Orientation="Vertical">
+                    <Label Style="{StaticResource StandardLabel}" Content="-- CONTROLS --" />
+
+                    <!-- NEW: Modes & Dark Mode Toggle across from each other -->
+                    <Grid Margin="0,4,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Grid.Column="0">
+                            <RadioButton Style="{StaticResource StandardRadioButton}" Name="LiveMode" Content="LIVE" Click="Click_SetMode" GroupName="CorruptionMode" />
+                            <RadioButton Style="{StaticResource StandardRadioButton}" Name="LabMode" Content="LAB" Click="Click_SetMode" GroupName="CorruptionMode" />
+                            <RadioButton Style="{StaticResource StandardRadioButton}" Name="OfflineMode" Content="OFFLINE" Click="Click_SetMode" GroupName="CorruptionMode" IsChecked="True" />
+                        </StackPanel>
+
+                        <ToggleButton x:Name="DarkModeToggle" Content="?? Dark Mode" Grid.Column="1" 
+                                      Click="Click_ToggleTheme" 
+                                      Padding="8,4" Margin="4,0,4,0" Cursor="Hand"
+                                      Background="{DynamicResource ThemeSurfaceBrush}" 
+                                      Foreground="{DynamicResource ThemeTextBrush}" 
+                                      BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                                      BorderThickness="1" />
+                    </Grid>
+
+                    <StackPanel Style="{StaticResource StandardStackPanel}" Name="CorruptionLiveModeOptions" Visibility="Collapsed">
+                        <Label Style="{StaticResource StandardLabel}" Content="PORT" Width="60" />
+                        <TextBox Style="{StaticResource FixedTextBox}" Name="SitePort" />
+                    </StackPanel>
+
+                    <StackPanel Style="{StaticResource StandardStackPanel}" Name="CorruptionLabModeOptions" Visibility="Collapsed">
+                        <Label Style="{StaticResource StandardLabel}" Content="IP" Width="60" />
+                        <TextBox Style="{StaticResource FixedTextBox}" Name="LabIP" TextChanged="LabIPChanged" />
+                    </StackPanel>
+
+                    <StackPanel Style="{StaticResource StandardStackPanel}">
+                        <Label Style="{StaticResource  StandardLabel}" Content="RELEASE" Width="60" />
+                        <ComboBox Style="{StaticResource FixedComboBox}" Name="CMReleaseBox" />
+                    </StackPanel>
+
+                    <Label Height="10" />
+                    <Label Style="{StaticResource StandardLabel}" Content="-- AUDITS --" />
+                    <CheckBox Style="{StaticResource FixedCheckBox}" Content="STATIONS" Name="StationAuditsCheck" IsChecked="True" />
+                    <CheckBox Style="{StaticResource FixedCheckBox}" Content="TRUNKS" Name="TrunkAuditsCheck" />
+                    <CheckBox Style="{StaticResource FixedCheckBox}" Content="ANNOUNCEMENTS" Name="AnnouncementAuditsCheck" />
+
+                    <Label Height="10" />
+                    <StackPanel Style="{StaticResource  StandardStackPanel}" HorizontalAlignment="Center">
+                        <Button Style="{StaticResource StandardButton}" Content="COLLECT" Name="CollectButton" IsEnabled="False" Click="Click_Collect" />
+                        <Button Style="{StaticResource StandardButton}" Content="AUDIT" Name="AuditButton" IsEnabled="False" ToolTip="Audit the currently loaded precs for issues" Click="Click_Audit" />
+                        <Button Style="{StaticResource StandardButton}" Content="REPAIR" Name="RepairButton" IsEnabled="False" Click="Click_Repair" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource  StandardStackPanel}" HorizontalAlignment="Center">
+                        <Button Style="{StaticResource StandardButton}" Content="EECCRs" Name="EECCRButton" IsEnabled="False" Click="Click_EECCR" />
+                        <Button Style="{StaticResource StandardButton}" Content="LOAD" Name="LoadButton" IsEnabled="False" ToolTip="Load PRECs that are stored in a .corr file" Click="Click_Load" />
+                        <Button Style="{StaticResource StandardButton}" Content="CANCEL" Name="CancelButton" IsEnabled="False" ToolTip="Cancel the current operation" Click="Click_Cancel" Background="#6B7280" />
+                    </StackPanel>
+
+                    <Label Height="15" />
+                    <Label Style="{StaticResource StandardLabel}" Content="-- STATISTICS --" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Label Style="{StaticResource StandardLabel}" Content="CORRUPTED" Grid.Row="0" Grid.Column="0" />
+                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="CorruptedLabel" Grid.Row="0" Grid.Column="1" FontWeight="Bold" />
+
+                        <Label Style="{StaticResource StandardLabel}" Content="STATIONS" Grid.Row="1" Grid.Column="0" />
+                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="CorruptedStationsLabel" Grid.Row="1" Grid.Column="1" />
+
+                        <Label Style="{StaticResource StandardLabel}" Content="TRUNKS" Grid.Row="2" Grid.Column="0" />
+                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="CorruptedTrunksLabel" Grid.Row="2" Grid.Column="1" />
+
+                        <Label Style="{StaticResource StandardLabel}" Content="ANNOUNCEMENTS" Grid.Row="3" Grid.Column="0" />
+                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="CorruptedAnnouncementsLabel" Grid.Row="3" Grid.Column="1" />
+
+                        <Label Style="{StaticResource StandardLabel}" Content="MANUAL FIXES" Grid.Row="4" Grid.Column="0" />
+                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="ManualFixesLabel" Grid.Row="4" Grid.Column="1" Foreground="#EF4444" FontWeight="Bold" />
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- STATUS BAR -->
+        <StatusBar Style="{StaticResource StandardStatusBar}" Grid.Row="2">
+            <StatusBarItem Content="STATE:" />
+            <StatusBarItem Content="IDLE" Name="StateLabel" MinWidth="70" FontWeight="Bold" />
+            <Separator />
+            <StatusBarItem Content="PROCESS:" />
+            <StatusBarItem Content="NONE" Name="ProcessLabel" MinWidth="120" />
+            <Separator />
+            <StatusBarItem Content="PROGRESS:" />
+            <StatusBarItem Content="-- / --" Name="ProgressLabel" MinWidth="95" />
+            <Separator />
+            <StatusBarItem Content="RUNTIME:" />
+            <StatusBarItem Content="00:00:00" Name="RuntimeLabel" MinWidth="60" />
+
+            <StatusBarItem HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal">
+                    <StatusBarItem Content="TOOLSA:" />
+                    <StatusBarItem Content="DOWN" Name="ToolsAStateLabel" MinWidth="45" Foreground="#EF4444" FontWeight="Bold"/>
+                    <Separator />
+                    <StatusBarItem Content="DRCCD:" />
+                    <StatusBarItem Content="DOWN" Name="DRCCDStateLabel" MinWidth="45" Foreground="#EF4444" FontWeight="Bold"/>
+                    <Separator />
+                    <StatusBarItem Content="CM:" />
+                    <StatusBarItem Content="DOWN" Name="CMStateLabel" MinWidth="45" Foreground="#EF4444" FontWeight="Bold"/>
+                </StackPanel>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
+
+
+====================================================================
+FILE: MainWindow.xaml.cs
+====================================================================
+
+/*
+ * Auditor3 :: MainWindow
+ * 
+ * This class / XAML defines the primary GUI and user interaction functionality.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ */
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.IO;
+using System.Text;
+using System.Threading.Tasks;
+using System.Timers;
+using System.Windows;
+using System.Windows.Controls;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using Timer = System.Timers.Timer;
+using Auditor3.Locations;
+using static Auditor3.Locations.Locations;
+
+namespace Auditor3
+{
+    public partial class MainWindow
+    {
+        private static Timer _refreshTimer;
+        private string LoadPRECsFile;
+        private string OutputText;
+        private object OutputLock;
+
+        // Constructor for creating the window
+        public MainWindow()
+        {
+            // Initialize the GUI elements and start the GUI initialization
+            InitializeComponent();
+            Startup();
+        }
+
+        // Constructor for creating the window with passed in precs
+        public MainWindow(string precs)
+        {
+            // Initialize the GUI elements
+            InitializeComponent();
+            // Set the PRECs and flag
+            LoadPRECsFile = precs;
+            // Start the GUI initialization
+            Startup();
+        }
+
+        // This method handles the common startup
+        private void Startup()
+        {
+            // Perform basic GUI setup
+            WindowState = WindowState.Maximized;
+            Title = $"Corruption Auditor v{Globals.VERSION()}";
+
+            // Populate the CM release dropdown and select CM 6.3 as default selected
+            foreach (var release in Enum.GetNames(typeof(CMRelease)))
+                CMReleaseBox.Items.Add(release);
+            CMReleaseBox.SelectedItem = CMRelease.CM6_3.ToString();
+
+            OutputText = "";
+            OutputLock = new object();
+
+            // Start the background initialization
+            var init = new Task(Initialize);
+            init.Start();
+        }
+
+        // Click handler to toggle Day/Night Mode dynamically
+        // Click handler to toggle Day/Night Mode dynamically
+        private void Click_ToggleTheme(object sender, RoutedEventArgs args)
+        {
+            bool isDark = DarkModeToggle.IsChecked == true;
+            var resources = Application.Current.Resources;
+
+            if (isDark)
+            {
+                DarkModeToggle.Content = "?? Light Mode";
+
+                // Dark Mode Palette
+                resources["ThemeBackgroundBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#111827"));
+                resources["ThemeSurfaceBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1F2937"));
+                resources["ThemePrimaryBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#38BDF8"));
+                resources["ThemePrimaryHoverBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0EA5E9"));
+                resources["ThemeTextBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F9FAFB"));
+                resources["ThemeTextInverseBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0F172A"));
+                resources["ThemeBorderBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#374151"));
+
+                // CORRECTED: Assign a Color, not a Brush
+                resources["ThemeShadowColor"] = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#FFFFFF");
+
+                AddStatus("Switched to Dark Mode");
+            }
+            else
+            {
+                DarkModeToggle.Content = "?? Dark Mode";
+
+                // Light Mode Palette (Matches default in Styles.xaml)
+                resources["ThemeBackgroundBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F3F4F6"));
+                resources["ThemeSurfaceBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#FFFFFF"));
+                resources["ThemePrimaryBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0284C7"));
+                resources["ThemePrimaryHoverBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0369A1"));
+                resources["ThemeTextBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1F2937"));
+                resources["ThemeTextInverseBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#FFFFFF"));
+                resources["ThemeBorderBrush"] = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#D1D5DB"));
+
+                // CORRECTED: Assign a Color, not a Brush
+                resources["ThemeShadowColor"] = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#FF000000");
+
+
+                AddStatus("Switched to Light Mode");
+            }
+        }
+
+        // This method adds a message to the status box
+        internal void AddStatus(string status)
+        {
+            // Add an asterisk to the message
+            status = $"* {status}";
+            // Create a local function and to add the message to the status box 
+            // and pass it to the dispatcher
+            void addStatus()
+            {
+                OutputLabel.Focus();
+                StatusBox.Text += status + Environment.NewLine;
+                StatusBox.ScrollToEnd();
+            }
+            Dispatcher.Invoke(addStatus);
+        }
+
+        // Tnis method adds a message to the output box
+        internal void AddOutput(string message)
+        {
+            void addOutput()
+            {
+                lock (OutputLock) { OutputText += message + Environment.NewLine; }
+            }
+            Dispatcher.Invoke(addOutput);
+        }
+
+        // This method gets the output details
+        internal string GetOutput()
+        {
+            // Create a variable to store the output
+            var output = "";
+            // Use the dispatcher to get the output data
+            void getOutput() { output = OutputBox.Text; }
+            Dispatcher.Invoke(getOutput);
+            // Return the output
+            return output;
+        }
+
+        // This method displays an error message
+        internal void Error(string message)
+        {
+            AddStatus(message);
+        }
+
+        // This method is used to handle errors when there is an exception
+        internal void Error(string message, Exception error)
+        {
+            var log = new StringBuilder();
+            log.AppendLine("ERROR REPORT");
+            log.AppendLine();
+            log.AppendLine(string.Join(Environment.NewLine, Globals.WORKING_PREC));
+            log.AppendLine();
+            log.AppendLine($"OCCURED : {Globals.TIMESTAMP()}");
+            log.AppendLine($"MESSAGE : {message}");
+            log.AppendLine();
+            log.AppendLine($"TYPE    : {error.GetType().Name}");
+            log.AppendLine($"ERROR   : {error.Message}");
+            log.AppendLine($"DATA    : {error.Data}");
+            log.AppendLine($"SOURCE  : {error.Source}");
+            log.AppendLine($"STACK   : {error.StackTrace}");
+            log.AppendLine($"TARGET  : {error.TargetSite}");
+            while (error.InnerException != null)
+            {
+                error = error.InnerException;
+                log.AppendLine($"INNER   : {error.Message}");
+            }
+            var logfile = Globals.REPORT("crash");
+            var writer = new StreamWriter(logfile);
+            writer.Write(log.ToString());
+            writer.Close();
+            AddStatus(message);
+            AddStatus($"Crash report generated at {logfile}");
+
+            // Don't upload a crash report if this is a dev build
+            if (!Globals.VERSION_DEV && Globals.TOOLSA.Connected())
+            {
+                var report = $"{Globals.CRASH_FOLDER_TOOLSA}crash_{Globals.TIMESLICE()}_{Globals.USER_DATA.ToolsAUsername}.log";
+                if (Globals.TOOLSA.SendFile(logfile, report))
+                {
+                    AddStatus($"Crash report uploaded to {report}");
+                }
+            }
+        }
+
+        // This method sets all the variables to an idle state
+        internal void Idle()
+        {
+            // Set the state and process
+            Globals.STATE = State.IDLE;
+            Globals.PROCESS = Process.NONE;
+            // Reset values
+            Globals.START_TIME = DateTime.MinValue;
+            Audits.Checked = 0;
+            Audits.ToCheck = 0;
+            Globals.CANCEL = false;
+
+            // Set the button states
+            void setButtons() { SetButtons(false); }
+            Dispatcher.Invoke(setButtons);
+        }
+
+        // This method is used to update the output box with collected PRECs
+        internal void SetPRECs(string precs)
+        {
+            void update() { DataBox.Text = precs; }
+            Dispatcher.Invoke(update);
+        }
+
+        // This method handles all the non-GUI thread related initialization and is 
+        // run in as a background task
+        private void Initialize()
+        {
+            // Add status message and set state/process to initializing
+            AddStatus($"Auditor is initializing on v{Globals.VERSION()}");
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.INITIALIZING;
+
+            // Set reference to the GUI
+            Globals.GUI = this;
+
+            // Ensure all necessary folders exist
+            if (!Directory.Exists(Globals.REPORT_DIR)) Directory.CreateDirectory(Globals.REPORT_DIR);
+
+            // Default values
+            Globals.USER_DATA = null;
+            Globals.MODE = Mode.OFFLINE;
+            Globals.PRECS_LOADED = false;
+            Globals.AUDIT_COMPLETE = false;
+            Globals.CANCEL = false;
+            Globals.START_TIME = DateTime.MinValue;
+            Audits.ResetCounters();
+            Locations.Locations.INITIALIZE();
+
+            // Initialize the database and userdata
+            Database.Initialize();
+            InitializeUserData();
+
+            // Set values from the user data
+            void setUserValues()
+            {
+                SitePort.Text = Globals.USER_DATA.DefaultLivePort;
+                LabIP.Text = Globals.USER_DATA.DefaultLabIP;
+            }
+            Dispatcher.Invoke(setUserValues);
+
+            // Initialize the connections
+            Globals.TOOLSA = new ToolsAConnection();
+            Globals.DRCCD = new DRCCDConnection();
+            Globals.CM = new CMConnection();
+            Globals.CM_LABS = new List<LabInfo>();
+            Globals.MG_LABS = new List<LabInfo>();
+            Globals.CM_PATCHES = new List<PatchInfo>();
+
+            if (CURRENT().HasToolsA())
+            {
+                // Connect to ToolsA
+                Globals.TOOLSA.Connect();
+                Globals.TOOLSA.CheckUpdates();
+                Globals.TOOLSA.RetrieveLabInfo();
+            }
+
+            // Connect to DRCCD if we are not in the AWS environmnet
+            if (CURRENT().HasDRCCD())
+            {
+                Globals.DRCCD.Connect();
+            }
+
+            // Initialize and start the GUI refresh timer
+            _refreshTimer = new Timer(Globals.REFRESH_TIMER);
+            _refreshTimer.Elapsed += Fired_RefreshTimer;
+            _refreshTimer.Start();
+
+            // Handle loading PRECs during startup if we are loading a .corr directly
+            if (!string.IsNullOrEmpty(LoadPRECsFile))
+            {
+                LoadPRECs(LoadPRECsFile);
+                LoadPRECsFile = null;
+            }
+
+            // Add a status message indicating initialization is complete and go idle
+            AddStatus("Auditor is now ready for use");
+            Idle();
+        }
+
+        // This method initialized the user data
+        private void InitializeUserData()
+        {
+            if (File.Exists(Globals.USER_DATA_FILE)) { LoadUserData(); }
+            if (Globals.USER_DATA == null)
+            {
+                Globals.USER_DATA = new UserData();
+                CollectUserData();
+            }
+        }
+
+        // This method loads the user data from file
+        private void LoadUserData()
+        {
+            try
+            {
+                AddStatus("Reading user data file");
+                var file = new StreamReader(Globals.USER_DATA_FILE);
+                var data = file.ReadToEnd();
+                file.Close();
+
+                var user = Encrypt.DecryptString(data);
+                Globals.USER_DATA = Globals.DESERIALIZE<UserData>(user);
+
+                var check = Globals.USER_DATA.ToolsAUsername;
+                Globals.IS_ADMIN = check == "harrisb" || check == "mcnuttd" || check == "nordwell" ||
+                    check == "carls" || check == "sethwalt";
+            }
+            catch (Exception error)
+            {
+                Error("An exception occured while loading user data", error);
+                Globals.USER_DATA = null;
+            }
+        }
+
+        // This method opens the user data window to collect details from the user
+        private void CollectUserData()
+        {
+            bool saved = false;
+            UserData data = new UserData();
+
+            void ShowCollect()
+            {
+                var collect = new UserDataWindow(Globals.USER_DATA);
+                collect.ShowDialog();
+                saved = collect.Saved;
+                data = collect.UserData;
+            }
+            Dispatcher.Invoke(ShowCollect);
+
+            if (saved)
+            {
+                try
+                {
+                    Globals.USER_DATA = data;
+                    var xml = Globals.SERIALIZE(Globals.USER_DATA);
+                    var encrypt = Encrypt.EncryptString(xml);
+
+                    var file = new StreamWriter(Globals.USER_DATA_FILE);
+                    file.Write(encrypt);
+                    file.Close();
+                }
+                catch (Exception error)
+                {
+                    Error("An exception occured while saving user data", error);
+                }
+            }
+        }
+
+        // This method sets the button states, you pass in whether the cancel button
+        // should be active or not
+        private void SetButtons(bool cancel)
+        {
+            void setButtons()
+            {
+                CollectButton.IsEnabled = Globals.MODE != Mode.OFFLINE && Globals.STATE == State.IDLE;
+                EECCRButton.IsEnabled = Globals.MODE != Mode.OFFLINE && Globals.STATE == State.IDLE;
+                AuditButton.IsEnabled = Globals.PRECS_LOADED && Globals.STATE == State.IDLE;
+                RepairButton.IsEnabled = Globals.AUDIT_COMPLETE && Globals.MODE != Mode.OFFLINE &&
+                    Globals.STATE == State.IDLE;
+                LoadButton.IsEnabled = Globals.MODE == Mode.OFFLINE && Globals.STATE == State.IDLE;
+                CancelButton.IsEnabled = cancel;
+                LabsMenuItem.IsEnabled = Globals.STATE == State.IDLE;
+                PullXLNButton.IsEnabled = Globals.MODE == Mode.LIVE && Globals.STATE == State.IDLE;
+                RunLocalScriptButton.IsEnabled = Globals.MODE != Mode.OFFLINE && Globals.STATE == State.IDLE;
+                RunToolsAScriptButton.IsEnabled = Globals.MODE != Mode.OFFLINE && Globals.STATE == State.IDLE;
+                StageLabButton.IsEnabled = Globals.STATE == State.IDLE;
+
+                AdminMenu.Visibility = Globals.IS_ADMIN ? Visibility.Visible : Visibility.Collapsed;
+                ReinitLabInfo.IsEnabled = Globals.TOOLSA.Connected();
+                JiraSearchdMenu.IsEnabled = Globals.DRCCD.Connected();
+                FindJiraMenu.Visibility = Globals.IS_ADMIN ? Visibility.Visible : Visibility.Collapsed;
+                FindJiraMenu.IsEnabled = Globals.DRCCD.Connected();
+            }
+            Dispatcher.Invoke(setButtons);
+        }
+
+        // This method cleans up when the application is closing
+        private void WindowClosing(object sender, CancelEventArgs args)
+        {
+            // Stop the refresh timer
+            if (_refreshTimer.Enabled) _refreshTimer.Stop();
+
+            // Check and close the connections to CM/ToolsA
+            if (Globals.TOOLSA.Connected()) Globals.TOOLSA.Disconnect();
+            if (Globals.CM.Connected()) Globals.CM.Disconnect();
+            if (Globals.DRCCD.Connected()) Globals.DRCCD.Disconnect();
+
+            // Exit the environment
+            Environment.Exit(0);
+        }
+
+        // This method is used to load PRECs from a file and is run in a background task
+        private void LoadPRECs(string filename)
+        {
+            try
+            {
+                // Set the state and add a status message
+                Globals.STATE = State.RUNNING;
+                Globals.PROCESS = Process.LOADPRECS;
+                AddStatus($"Loading PRECs from {filename}");
+
+                // Read the data from the file
+                var reader = new StreamReader(filename);
+                var precs = reader.ReadToEnd();
+                reader.Close();
+
+                // Add a status message and clean the data
+                AddStatus("Cleaning loaded data");
+                precs = Globals.CLEAN(precs);
+
+                // Put the PRECs into the data box using a dispatcher action
+                void setData() { DataBox.Text = precs; }
+                Dispatcher.Invoke(setData);
+
+                // Set the flags, add a status message, and go idle
+                Globals.PRECS_LOADED = true;
+                Globals.AUDIT_COMPLETE = false;
+                AddStatus("Done loading PRECs");
+            }
+            catch (Exception error)
+            {
+                Error("Exception occured while loading PRECs", error);
+            }
+            Idle();
+        }
+
+        // This method is used to set the environment values from the form
+        private void SetFormValues()
+        {
+            Globals.CM_RELEASE = (CMRelease)Enum.Parse(typeof(CMRelease), (string)CMReleaseBox.SelectedItem);
+            Globals.STATION_AUDITS = StationAuditsCheck.IsChecked == true;
+            Globals.TRUNK_AUDITS = TrunkAuditsCheck.IsChecked == true;
+            Globals.ANNOUNCEMENT_AUDITS = AnnouncementAuditsCheck.IsChecked == true;
+            Globals.CONNECT_PORT = SitePort.Text;
+            Globals.CONNECT_IP = LabIP.Text;
+            Globals.WYLD_STALLYN = WyldStallyn.IsChecked == true;
+        }
+
+        // Click handler for when Wyld Stallyn Mode menu item is clicked
+        private void Click_WyldStallynMode(object sender, RoutedEventArgs args)
+        {
+            if (WyldStallyn.IsChecked == true)
+                MessageBox.Show($"Wyld Stallyn Mode should only be used when you have a very large fixscriptcONLY USE IN LAB ENVIRONMENT{Environment.NewLine}You will not get any terminal output. You will hammer TCM with commands.{Environment.NewLine}BE CAUTIOUS - Wyld Stallyns Rule!", "WARNING");
+        }
+
+        // Click handler for the exit menu item
+        private void Click_Exit(object sender, RoutedEventArgs args)
+        {
+            // Add a status message and close the window
+            AddStatus("[CLICK] Exit");
+            Close();
+        }
+
+        // Click handler for the mode radio buttons
+        private void Click_SetMode(object sender, RoutedEventArgs args)
+        {
+            // Set the mode variable and show the correct options panel
+            if (LiveMode.IsChecked == true)
+            {
+                Globals.MODE = Mode.LIVE;
+                CorruptionLiveModeOptions.Visibility = Visibility.Visible;
+                CorruptionLabModeOptions.Visibility = Visibility.Collapsed;
+            }
+            else if (LabMode.IsChecked == true)
+            {
+                Globals.MODE = Mode.LAB;
+                CorruptionLiveModeOptions.Visibility = Visibility.Collapsed;
+                CorruptionLabModeOptions.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                Globals.MODE = Mode.OFFLINE;
+                CorruptionLiveModeOptions.Visibility = Visibility.Collapsed;
+                CorruptionLabModeOptions.Visibility = Visibility.Collapsed;
+            }
+
+            // Set the button states
+            SetButtons(false);
+
+            // Toss a warning message up if connected to a CM already
+            if (Globals.CM.Connected()) MessageBox.Show("You are connected to a system already, please disconnect if connection is no longer required", "Warning");
+        }
+
+        // Click handler for the cancel button
+        private void Click_Cancel(object sender, RoutedEventArgs args)
+        {
+            // Add a status message and set the cancel flag
+            AddStatus("[CLICK] Cancel");
+            Globals.CANCEL = true;
+        }
+
+        // Click handler for the load button
+        private void Click_Load(object sender, RoutedEventArgs args)
+        {
+            // Add a status message
+            AddStatus("[CLICK] Load");
+
+            // Set the state and process, and set the button states
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.LOADPRECS;
+            SetButtons(false);
+
+            // Open a filename selector
+            var selector = new OpenFileDialog { Filter = "PREC Data | *.corr" };
+            selector.ShowDialog();
+
+            // Make sure a file was selected
+            if (string.IsNullOrEmpty(selector.FileName))
+            {
+                Idle();
+                return;
+            }
+
+            DataBox.Text = "";
+
+            // Create and start the background task to load the PRECs
+            var load = new Task(() => LoadPRECs(selector.FileName));
+            load.Start();
+        }
+
+        // Click handler for the audit button
+        private void Click_Audit(object sender, RoutedEventArgs args)
+        {
+            // Add a status message
+            AddStatus("[CLICK] Audit");
+
+            // Set the state/process and button states
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.AUDIT;
+            SetButtons(true);
+
+            // Set the form values and clear the counters
+            SetFormValues();
+            Audits.ResetCounters();
+
+            // Clear the output box and copy the PREC data to the parser
+            OutputBox.Text = "";
+            PRECParser.InputData = DataBox.Text;
+
+            // Create and start a background task for the auditor
+            var auditor = new Task(Auditor.Start);
+            auditor.Start();
+        }
+
+        // Click handler for the collect button
+        private void Click_Collect(object sender, RoutedEventArgs args)
+        {
+            // Add a status message
+            AddStatus("[CLICK] Collect");
+
+            // Set the state/process and button states
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.COLLECT;
+            SetButtons(true);
+
+            // Set the form values and clear the counters
+            SetFormValues();
+            OutputBox.Text = "";
+
+            // Start the collector in a background task
+            var collector = new Task(Collector.Start);
+            collector.Start();
+        }
+
+        // Click handler for the repair button
+        private void Click_Repair(object sender, RoutedEventArgs args)
+        {
+            // Add a status message
+            AddStatus("[CLICK] Repair");
+
+            // Set the state/process and button states
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.REPAIR;
+            SetButtons(true);
+
+            // Set the form values and clear the counters
+            SetFormValues();
+            OutputBox.Text = "";
+
+            var repair = new Task(Repairer.Start);
+            repair.Start();
+        }
+
+        // Click handler for the EECCRs button
+        private void Click_EECCR(object sender, RoutedEventArgs args)
+        {
+            // Add a status message
+            AddStatus("[CLICK] EECCRs");
+
+            // Set the state/process and button states
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.REPAIR;
+            SetButtons(true);
+
+            // Set the form values and clear the counters
+            SetFormValues();
+            OutputBox.Text = "";
+
+            var eeccrAudit = new Task(EECCRAudit.Start);
+            eeccrAudit.Start();
+        }
+
+        // Click handler for the PREC list button
+        private void Click_PRECList(object sender, RoutedEventArgs args)
+        {
+            var preclist = new PRECListWindow();
+            preclist.ShowDialog();
+        }
+
+        // Click handler for the user data button
+        private void Click_UserData(object sender, RoutedEventArgs args)
+        {
+            var collect = new Task(CollectUserData);
+            collect.Start();
+        }
+
+        // Click handler for the connect ToolsA menu item
+        private void Click_ConnectToolsA(object sender, RoutedEventArgs args)
+        {
+            if (Globals.TOOLSA.Connected()) return;
+            void connectFunc() { Globals.TOOLSA.Connect(); }
+            var connect = new Task(connectFunc);
+            connect.Start();
+        }
+
+        // Click handler for the disconnect ToolsA menu item
+        private void Click_DisconnectToolsA(object sender, RoutedEventArgs args)
+        {
+            if (!Globals.TOOLSA.Connected()) return;
+            void connectFunc() { Globals.TOOLSA.Disconnect(); }
+            var connect = new Task(connectFunc);
+            connect.Start();
+        }
+
+        // Click handler for the connect DRCCD menu item
+        private void Click_ConnectDRCCD(object sender, RoutedEventArgs args)
+        {
+            if (Globals.DRCCD.Connected()) return;
+            void connectFunc() { Globals.DRCCD.Connect(); }
+            var connect = new Task(connectFunc);
+            connect.Start();
+        }
+
+        // Click handler for the disconnect DRCCD menu item
+        private void Click_DisconnectDRCCD(object sender, RoutedEventArgs args)
+        {
+            if (!Globals.DRCCD.Connected()) return;
+            void connectFunc() { Globals.DRCCD.Disconnect(); }
+            var disconnect = new Task(connectFunc);
+            disconnect.Start();
+        }
+
+        // Click handler for the disconnect CM menu item
+        private void Click_DisconnectCM(object sender, RoutedEventArgs args)
+        {
+            if (!Globals.CM.Connected()) return;
+            void connectFunc() { Globals.CM.Disconnect(); }
+            var connect = new Task(connectFunc);
+            connect.Start();
+        }
+
+        // Click handler for the run local script menu item
+        private void Click_RunLocalScript(object sender, RoutedEventArgs args)
+        {
+            // Add a status message
+            AddStatus("[CLICK] Run Local Script");
+
+            // Set the state and process, and set the button states
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.LOADSCRIPT;
+            SetButtons(false);
+            SetFormValues();
+
+            // Open a filename selector
+            var selector = new OpenFileDialog();
+            selector.ShowDialog();
+
+            // Make sure a file was selected
+            if (string.IsNullOrEmpty(selector.FileName))
+            {
+                Idle();
+                return;
+            }
+
+            DataBox.Text = "";
+
+            // Create and start the background task to run the script
+            var run = new Task(() => ScriptRunner.RunLocal(selector.FileName));
+            run.Start();
+        }
+
+        // Click handler for the run ToolsA script menu item
+        private void Click_RunToolsAScript(object sender, RoutedEventArgs args)
+        {
+            // Add a status message
+            AddStatus("[CLICK] Run ToolsA Script");
+
+            // Set the state and process, and set the button states
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.LOADSCRIPT;
+            SetButtons(false);
+            SetFormValues();
+
+            // Open a filename selector
+            var selector = new CollectToolsAFileWindow();
+            selector.ShowDialog();
+
+            // Make sure a file was selected
+            if (string.IsNullOrEmpty(selector.File))
+            {
+                Idle();
+                return;
+            }
+
+            DataBox.Text = "";
+
+            // Create and start the background task to run the script
+            var run = new Task(() => ScriptRunner.RunToolsA(selector.File));
+            run.Start();
+        }
+
+        // Click handler for the labs menu item
+        private void Click_Labs(object sender, RoutedEventArgs args)
+        {
+            if (!Globals.LABS_LOADED) return;
+
+            var output = new StringBuilder();
+            output.AppendLine();
+            output.AppendLine("CM Corruption Team Labs");
+            output.AppendLine();
+            output.AppendLine("VER   IP               ACTIVE");
+            output.AppendLine("===   ===============  ======");
+            foreach (var cm in Globals.CM_LABS)
+            {
+                output.AppendLine($"{cm.Version.PadRight(6, ' ')}{cm.IP.PadRight(17, ' ')}{cm.Active}");
+            }
+            output.AppendLine();
+            output.AppendLine();
+            output.AppendLine("MG CPE Team Labs");
+            output.AppendLine();
+            output.AppendLine("TYPE  IP               ACTIVE");
+            output.AppendLine("====  ===============  ======");
+            foreach (var mg in Globals.MG_LABS)
+            {
+                output.AppendLine($"{mg.Version.PadRight(6, ' ')}{mg.IP.PadRight(17, ' ')}{mg.Active}");
+            }
+
+            OutputBox.Text = output.ToString();
+        }
+
+        // Click handler for the pull XLN button
+        private void Click_PullXLN(object sender, RoutedEventArgs args)
+        {
+            // Add a status message
+            AddStatus("[CLICK] Pull XLN");
+
+            // Set the state and process, and set the button states
+            Globals.STATE = State.INIT;
+            Globals.PROCESS = Process.PULLXLN;
+            SetButtons(false);
+            SetFormValues();
+
+            var run = new Task(PullXLN.Start);
+            run.Start();
+        }
+
+        // Click handler for the stage lab button
+        private void Click_StageLab(object sender, RoutedEventArgs args)
+        {
+            // Open a lab stager window to collect the details
+            var stager = new LabStagerWindow();
+            stager.ShowDialog();
+
+            if (!stager.Staging) return;
+
+            OutputBox.Text = "";
+            SetButtons(false);
+
+            var run = new Task(LabStager.Start);
+            run.Start();
+        }
+
+        // Click handler for the CM lab admin button
+        private void Click_CMLabAdmin(object sender, RoutedEventArgs args)
+        {
+            var admin = new CMLabAdminWindow();
+            admin.ShowDialog();
+        }
+
+        // Click handler for the MG lab admin button
+        private void Click_MGLabAdmin(object sender, RoutedEventArgs args)
+        {
+            var admin = new MGLabAdminWindow();
+            admin.ShowDialog();
+        }
+
+        // Click handler for the CM patch admin button
+        private void Click_CMPatchAdmin(object sender, RoutedEventArgs args)
+        {
+            var admin = new CMPatchAdminWindow();
+            admin.ShowDialog();
+        }
+
+        // Click handler for the reinit lab info button
+        private void Click_ReinitLabInfo(object sender, RoutedEventArgs args)
+        {
+            Globals.TOOLSA.RetrieveLabInfo();
+        }
+
+        // Click handler for the jirasearchd menu item
+        private void Click_JiraSearchd(object sender, RoutedEventArgs args)
+        {
+            var jirasearchd = new jirasearchdWindow();
+            jirasearchd.ShowDialog();
+            if (!jirasearchd.IsSearching) return;
+
+            OutputBox.Text = "";
+
+            void search()
+            {
+                var result = Globals.DRCCD.JiraSearchd(jirasearchd.SearchString, jirasearchd.IsStringSearch);
+                AddOutput(result);
+            }
+
+            var searcher = new Task(search);
+            searcher.Start();
+        }
+
+        // Click handler for the findjira menu item
+        private void Click_FindJira(object sender, RoutedEventArgs args)
+        {
+            var findjira = new findjiraWindow();
+            findjira.ShowDialog();
+            if (!findjira.IsSearching) return;
+
+            OutputBox.Text = "";
+
+            void search()
+            {
+                var result = Globals.DRCCD.FindJira(findjira.JIRA, findjira.CodeContext);
+                AddOutput(result);
+            }
+
+            var searcher = new Task(search);
+            searcher.Start();
+        }
+
+        // Click handler for the script generator menu item
+        private void Click_ScriptGenerator(object sender, RoutedEventArgs args)
+        {
+            var scriptGenerator = new ScriptGeneratorWindow();
+            scriptGenerator.ShowDialog();
+        }
+
+        // This method handles updating the GUI when the timer fires
+        private void Fired_RefreshTimer(object sender, ElapsedEventArgs args)
+        {
+            // Temporarily stop the refresh timer
+            _refreshTimer.Stop();
+
+            // Create a string for the runtime
+            var runtime = "";
+            if (Globals.START_TIME == DateTime.MinValue)
+            {
+                runtime = "00:00:00";
+            }
+            else
+            {
+                var timer = DateTime.Now - Globals.START_TIME;
+                runtime = $"{timer.Hours.ToString().PadLeft(2, '0')}:{timer.Minutes.ToString().PadLeft(2, '0')}:" +
+                    $"{timer.Seconds.ToString().PadLeft(2, '0')}";
+            }
+
+            // Update the GUI elements using the dispatcher
+            void update()
+            {
+                StateLabel.Content = Globals.STATE;
+                ProcessLabel.Content = Globals.PROCESS;
+
+                CorruptedLabel.Content = Audits.Corrupted;
+                CorruptedStationsLabel.Content = Audits.CorruptedStations;
+                CorruptedTrunksLabel.Content = Audits.CorruptedTrunks;
+                CorruptedAnnouncementsLabel.Content = Audits.CorruptedAnnouncements;
+                ManualFixesLabel.Content = Audits.ManualFixes;
+
+                RuntimeLabel.Content = $"{runtime}";
+                ProgressLabel.Content = $"{Audits.Checked} / {Audits.ToCheck}";
+
+                ToolsAStateLabel.Content = Globals.TOOLSA.Connected() ? "UP" : "DOWN";
+                DRCCDStateLabel.Content = Globals.DRCCD.Connected() ? "UP" : "DOWN";
+                CMStateLabel.Content = Globals.CM.Connected() ? "UP" : "DOWN";

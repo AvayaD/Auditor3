@@ -1,0 +1,3463 @@
+            var up = false;
+
+            while (!done) {
+                Thread.Sleep(15000);
+                var statapp = _lab.Statapp();
+                var split = statapp.Split('\n');
+                foreach (var line in split) {
+                    if (!line.Contains("CommunicaMgr")) continue;
+                    Globals.GUI.AddStatus(line);
+                    var check = line.Split(' ').Where(a => !string.IsNullOrEmpty(a)).ToArray()[1];
+                    var fields = check.Split('/');
+                    if (fields[0] == fields[1]) {
+                        done = true;
+                        up = true;
+                    } else if ((DateTime.Now - start).TotalMinutes >= 5) {
+                        Globals.GUI.Error("Timed out waiting for CM to come up");
+                        done = true;
+                    }
+                }
+            }
+
+            return up;
+        }
+
+        // Method for setting the MOTD
+        private static void SetMOTD() {
+            Globals.GUI.AddOutput("-Setting /etc/motd");
+            Globals.GUI.AddOutput("");
+
+            var shellReader = new StreamReader(_shell);
+            var shellWriter = new StreamWriter(_shell);
+
+            shellWriter.AutoFlush = true;
+
+            // Flush two lines
+            shellWriter.WriteLine();
+            shellWriter.WriteLine();
+
+            if (!GoSroot(shellWriter)) return;
+
+            var setMOTD = $"/bin/echo 'LAB IN USE - {Globals.USER_DATA.ToolsAUsername.ToUpper()} - {DateTime.Now.ToString("MM/dd")}' > /etc/motd";
+
+            shellWriter.WriteLine(setMOTD);
+            Thread.Sleep(2000);
+            shellWriter.WriteLine("exit");
+        }
+
+        // Method to parse the filename out of a URL
+        private static string GetFilename(string url) {
+            return url.Split('/').Last();
+        }
+
+        // Method for logging in sroot on the shell
+        private static bool GoSroot(StreamWriter shellWriter) {
+            shellWriter.WriteLine("/bin/su - sroot");
+            var first = _shell.Expect(new Regex("Challenge:|Password:"), new TimeSpan(0, 0, 10));
+            if (string.IsNullOrEmpty(first)) {
+                Globals.GUI.Error("Failed to switch to sroot");
+                return false;
+            }
+
+            var response = "";
+            if (first.Contains("Password:")) {
+                response = "sroot01";
+            } else {
+                var split = first.Split('\n');
+                foreach (var line in split) {
+                    if (line.Contains("Challenge:")) {
+                        response = Connections.WebASGConnection.GetResponse(line, "sroot");
+                        //response = Globals.TOOLSA.GetASG(line, "sroot");
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(response)) {
+                Globals.GUI.Error("Failed to obtain sroot authentication response");
+                return false;
+            }
+
+            shellWriter.WriteLine(response);
+            return true;
+        }
+    }
+}
+
+====================================================================
+FILE: Modules\PRECParser.cs
+====================================================================
+
+/*
+ * Auditor3 :: PRECParser
+ * 
+ * This class defines the parser that takes the raw PREC data and generates objects in the database.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.Eventing.Reader;
+
+namespace Auditor3 {
+    internal static class PRECParser {
+        internal static string InputData;               // The raw PREC data
+        internal static List<string> ParserDebugInfo;   // Any debug information from the parser
+
+        // This method is used to start the parsing
+        internal static void Start() {
+            // Set the state and add a status message
+            Globals.PROCESS = Process.PARSER;
+            Globals.GUI.AddStatus("PREC Parser is starting");
+            ParserDebugInfo = new List<string>();
+
+            // Split the input lines and null out the input data
+            var lines = InputData.Split('\n');
+            InputData = null;
+
+            // Define the variables we need for the parser loop
+            var newPrec = true;
+            var linesNeeded = 0;
+            var index = 0;
+            var storage = new string[1];
+
+            // Loop on every line
+            foreach (var line in lines) {
+                // Check for cancel flag and null lines
+                if (Globals.CANCEL) return;
+
+                // Get the PREC type for the line and make sure it is valid
+                var type = GetType(line);
+                if (type == PRECType.UNKNOWN) continue;
+
+                // Check if this is a new PREC
+                if (newPrec) {
+                    // Switch on the type and either setup to collect additional lines, or process
+                    // single line PRECs
+                    switch (type) {
+
+                        // Single line precs
+                        case PRECType.PR_AMW:
+                        case PRECType.PR_AG_MBR:
+                        case PRECType.PR_BRIDGE:
+                        case PRECType.PR_EXT:
+                        case PRECType.PR_FEXT:
+                        case PRECType.PR_GM_IANC_BD:
+                        case PRECType.PR_IANC_BD:
+                        case PRECType.PR_MOBD:
+                        case PRECType.PR_MOPORT:
+                        case PRECType.PR_PORT_UID:
+                        case PRECType.PR_TTISET:
+                        case PRECType.PR_AN_GRP:
+                        case PRECType.PR_BARRY:
+                            storage = new string[1];
+                            storage[0] = line;
+                            ProcessPREC(storage);
+                            break;
+
+                        // Two line precs
+                        case PRECType.PR_ACD_TRUNK:
+                        case PRECType.PR_AUDIO_GRP:
+                        case PRECType.PR_BUTTON:
+                        case PRECType.PR_OPT_STN:
+                        case PRECType.PR_TR_MBR:
+                            newPrec = false;
+                            linesNeeded = 1;
+                            storage = new string[2];
+                            storage[0] = line;
+                            index = 1;
+                            break;
+
+                        // Three line precs
+                        case PRECType.PR_INT_ANNC:
+                            newPrec = false;
+                            linesNeeded = 2;
+                            storage = new string[3];
+                            storage[0] = line;
+                            index = 1;
+                            break;
+
+                        // Four line PRECs
+                        case PRECType.PR_UDATA:
+                            newPrec = false;
+                            linesNeeded = 3;
+                            storage = new string[4];
+                            storage[0] = line;
+                            index = 1;
+                            break;
+
+                        // Seven line precs
+                        case PRECType.PR_TRUNK:
+                            newPrec = false;
+                            linesNeeded = 6;
+                            storage = new string[7];
+                            storage[0] = line;
+                            index = 1;
+                            break;
+
+                        // Special cases
+                        case PRECType.PR_TR_GRP:
+                            if (Globals.CM_RELEASE <= CMRelease.CM7_0) {
+                                newPrec = false;
+                                linesNeeded = 23;
+                                storage = new string[24];
+                                storage[0] = line;
+                                index = 1;
+                                break;
+                            } else {
+                                newPrec = false;
+                                linesNeeded = 22;
+                                storage = new string[23];
+                                storage[0] = line;
+                                index = 1;
+                                break;
+                            }
+
+                        case PRECType.PR_STN:
+                            newPrec = false;
+
+
+
+                            if (Globals.CM_RELEASE == CMRelease.CM8_1) {
+                                linesNeeded = 10;
+                                storage = new string[11];
+                            }
+                            else if (Globals.CM_RELEASE == CMRelease.CM8_0) {
+                                linesNeeded = 7;
+                                storage = new string[8];
+                            }
+                            else if (Globals.CM_RELEASE == CMRelease.CM6_2 || Globals.CM_RELEASE == CMRelease.CM6_0_1 ||
+                                Globals.CM_RELEASE == CMRelease.CM5_2_1) {
+                                linesNeeded = 2;
+                                storage = new string[3];
+                            }
+
+                            else if (Globals.CM_RELEASE == CMRelease.CM10_1 || Globals.CM_RELEASE == CMRelease.CM10_2) {
+                                linesNeeded = 12;
+                                storage = new string[13];
+
+                            } else {
+                                linesNeeded = 3;
+                                storage = new string[4];
+                            }
+
+                            storage[0] = line;
+                            index = 1;
+
+                            break;
+
+                        case PRECType.PR_XMAP:
+                            if (Globals.CM_RELEASE == CMRelease.CM10_1 || Globals.CM_RELEASE == CMRelease.CM10_2)
+                            {
+                                newPrec = false;
+                                linesNeeded = 1;
+                                storage = new string[2];
+                                storage[0] = line;
+                                index = 1;
+                                break;
+                            } else {
+                                storage = new string[1];
+                                storage[0] = line;
+                                ProcessPREC(storage);
+                                break;
+                            }
+
+                        case PRECType.PR_ST_CPS:
+                            if (Globals.CM_RELEASE == CMRelease.CM6_2 || Globals.CM_RELEASE == CMRelease.CM6_0_1 ||
+                                Globals.CM_RELEASE == CMRelease.CM5_2_1) {
+                                storage = new string[1];
+                                storage[0] = line;
+                                ProcessPREC(storage);
+                            } else {
+                                newPrec = false;
+                                linesNeeded = 1;
+                                storage = new string[2];
+                                storage[0] = line;
+                                index = 1;
+                            }
+                            break;
+                    }
+                } 
+                // Not a new PREC
+                else {
+                    // Add the line and update the counters
+                    storage[index] = line;
+                    index++;
+                    linesNeeded--;
+
+                    // Check if we have all the lines and process the PREC if we do
+                    if (linesNeeded == 0) {
+                        ProcessPREC(storage);
+                        newPrec = true;
+                    }
+                }
+            }
+
+            Globals.WORKING_PREC = new string[0];
+            Globals.GUI.AddOutput(string.Join(Environment.NewLine, ParserDebugInfo.ToArray()));
+            Globals.GUI.AddStatus("PREC Parser has completed");
+        }
+
+        // This method processes the raw PRECs into database objects
+        private static void ProcessPREC(string[] prec) {
+            Globals.WORKING_PREC = prec;
+
+            // Get the PREC type and switch on it to create the proper object and
+            // store it in the database
+            switch (GetType(prec[0])) {
+
+                //case PRECType.PR_BARRY:
+                //    var pr_barry = new PR_BARRY(prec);
+                //    Database.PR_BARRYs.Add(pr_barry);
+                //    break;
+
+                case PRECType.PR_AMW:
+                    var pr_amw = new PR_AMW(prec);
+                    Database.PR_AMWs.Add(pr_amw);
+                    break;
+
+                case PRECType.PR_ACD_TRUNK:
+                    var pr_acd_trunk = new PR_ACD_TRUNK(prec);
+                    Database.PR_ACD_TRUNKs.Add(pr_acd_trunk);
+                    break;
+
+                case PRECType.PR_AN_GRP:
+                    var pr_an_grp = new PR_AN_GRP(prec);
+                    Database.PR_AN_GRPs.Add(pr_an_grp);
+                    break;
+
+                case PRECType.PR_AG_MBR:
+                    var pr_ag_mbr = new PR_AG_MBR(prec);
+                    Database.PR_AG_MBRs.Add(pr_ag_mbr);
+                    break;
+
+                case PRECType.PR_AUDIO_GRP:
+                    var pr_audio_grp = new PR_AUDIO_GRP(prec);
+                    Database.PR_AUDIO_GRPs.Add(pr_audio_grp);
+                    break;
+
+                case PRECType.PR_BRIDGE:
+                    var pr_bridge = new PR_BRIDGE(prec);
+                    Database.PR_BRIDGEs.Add(pr_bridge);
+                    break;
+
+                case PRECType.PR_BUTTON:
+                    var pr_button = new PR_BUTTON(prec);
+                    Database.PR_BUTTONs.Add(pr_button);
+                    break;
+
+                case PRECType.PR_EXT:
+                    var pr_ext = new PR_EXT(prec);
+                    Database.PR_EXTs.Add(pr_ext);
+                    break;
+
+                case PRECType.PR_FEXT:
+                    var pr_fext = new PR_FEXT(prec);
+                    Database.PR_FEXTs.Add(pr_fext);
+                    break;
+
+                case PRECType.PR_GM_IANC_BD:
+                    var pr_gm_ianc_bd = new PR_GM_IANC_BD(prec);
+                    Database.PR_GM_IANC_BDs.Add(pr_gm_ianc_bd);
+                    break;
+
+                case PRECType.PR_IANC_BD:
+                    var pr_ianc_bd = new PR_IANC_BD(prec);
+                    Database.PR_IANC_BDs.Add(pr_ianc_bd);
+                    break;
+
+                case PRECType.PR_INT_ANNC:
+                    var pr_int_annc = new PR_INT_ANNC(prec);
+                    Database.PR_INT_ANNCs.Add(pr_int_annc);
+                    break;
+
+                case PRECType.PR_MOBD:
+                    var pr_mobd = new PR_MOBD(prec);
+                    Database.PR_MOBDs.Add(pr_mobd);
+                    break;
+
+                case PRECType.PR_MOPORT:
+                    var pr_moport = new PR_MOPORT(prec);
+                    Database.PR_MOPORTs.Add(pr_moport);
+                    break;
+
+                case PRECType.PR_OPT_STN:
+                    var pr_opt_stn = new PR_OPT_STN(prec);
+                    Database.PR_OPT_STNs.Add(pr_opt_stn);
+                    break;
+
+                case PRECType.PR_PORT_UID:
+                    var pr_port_uid = new PR_PORT_UID(prec);
+                    Database.PR_PORT_UIDs.Add(pr_port_uid);
+                    break;
+
+                case PRECType.PR_ST_CPS:
+                    var pr_st_cps = new PR_ST_CPS(prec);
+                    Database.PR_ST_CPSs.Add(pr_st_cps);
+                    break;
+
+                case PRECType.PR_STN:
+                    var pr_stn = new PR_STN(prec);
+                    Database.PR_STNs.Add(pr_stn);
+                    break;
+
+                case PRECType.PR_TR_GRP:
+                    var pr_tr_grp = new PR_TR_GRP(prec);
+                    Database.PR_TR_GRPs.Add(pr_tr_grp);
+                    break;
+
+                case PRECType.PR_TR_MBR:
+                    var pr_tr_mbr = new PR_TR_MBR(prec);
+                    Database.PR_TR_MBRs.Add(pr_tr_mbr);
+                    break;
+
+                case PRECType.PR_TRUNK:
+                    var pr_trunk = new PR_TRUNK(prec);
+                    // Ignore non ISDN type trunks
+                    if (pr_trunk.TrunkGroup.Substring(0, 4) != "0083" && 
+                        pr_trunk.TrunkGroup.Substring(0, 4) != "0830") break;
+                    Database.PR_TRUNKs.Add(pr_trunk);
+                    break;
+
+                case PRECType.PR_TTISET:
+                    var pr_ttiset = new PR_TTISET(prec);
+                    Database.PR_TTISETs.Add(pr_ttiset);
+                    break;
+
+                case PRECType.PR_UDATA:
+                    var pr_udata = new PR_UDATA(prec);
+                    Database.PR_UDATAs.Add(pr_udata);
+                    break;
+
+                case PRECType.PR_XMAP:
+                    var pr_xmap = new PR_XMAP(prec);
+                    Database.PR_XMAPs.Add(pr_xmap);
+                    break;
+            }
+        }
+
+        // This method gets the PREC type of a line
+        private static PRECType GetType(string input) {
+            // Make sure this is not a blank line
+            if (string.IsNullOrEmpty(input)) return PRECType.UNKNOWN;
+
+            // Split the line into fields
+            var fields = input.Split(' ');
+
+            // Switch on the first value to match to a valid PREC type
+            switch (fields[0]) {
+
+                case "PR_BARRY": return PRECType.PR_BARRY;
+
+                case "PR_AMW":
+                    return PRECType.PR_AMW;
+
+                case "PR_ACD_TRUNK":
+                    return PRECType.PR_ACD_TRUNK;
+
+                case "PR_AN_GRP":
+                    return PRECType.PR_AN_GRP;
+
+                case "PR_BRIDGE":
+                    return PRECType.PR_BRIDGE;
+
+                case "PR_BUTTON":
+                    return PRECType.PR_BUTTON;
+
+                case "PR_EXT":
+                    return PRECType.PR_EXT;
+
+                case "PR_FEXT":
+                    return PRECType.PR_FEXT;
+
+                case "PR_GM_IANC_BD":
+                    return PRECType.PR_GM_IANC_BD;
+
+                case "PR_IANC_BD":
+                    return PRECType.PR_IANC_BD;
+
+                case "PR_INT_ANNC":
+                    return PRECType.PR_INT_ANNC;
+
+                case "PR_MOBD":
+                    return PRECType.PR_MOBD;
+
+                case "PR_MOPORT":
+                    return PRECType.PR_MOPORT;
+
+                case "PR_OPT_STN":
+                    return PRECType.PR_OPT_STN;
+
+                case "PR_PORT_UID":
+                    return PRECType.PR_PORT_UID;
+
+                case "PR_STN":
+                    return PRECType.PR_STN;
+
+                case "PR_TR_GRP":
+                    return PRECType.PR_TR_GRP;
+
+                case "PR_TR_MBR":
+                    return PRECType.PR_TR_MBR;
+
+                case "PR_TRUNK":
+                    return PRECType.PR_TRUNK;
+
+                case "PR_TTISET":
+                    return PRECType.PR_TTISET;
+
+                case "PR_UDATA":
+                    return PRECType.PR_UDATA;
+
+                case "PR_ST_CPS":
+                    return PRECType.PR_ST_CPS;
+
+                case "PR_XMAP":
+                    return PRECType.PR_XMAP;
+
+                // Special handling for unnamed PRECs
+                case "PREC":
+                    switch (fields[1]) {
+
+                        case "x4c90":
+                            return PRECType.PR_AUDIO_GRP;
+
+                        case "x4c91":
+                            return PRECType.PR_AG_MBR;
+
+                        default:
+                            return PRECType.UNKNOWN;
+                    }
+
+                default:
+                    return PRECType.UNKNOWN;
+            }
+        }
+    }
+}
+
+
+====================================================================
+FILE: Modules\PullXLN.cs
+====================================================================
+
+/*
+ * Auditor3 :: PullXLN
+ * 
+ * This class defines the process that pulls the XLN file from a live system.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+
+namespace Auditor3 {
+    internal static class PullXLN {
+        // Method that starts the process
+        internal static void Start() {
+            // Set the state/process, set the start time, and add a status message
+            Globals.STATE = State.RUNNING;
+            Globals.PROCESS = Process.PULLXLN;
+            Globals.START_TIME = DateTime.Now;
+
+            try {
+                Run();
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured while pulling the XLN file", error);
+            }
+
+            Globals.GUI.Idle();
+        }
+
+        // Method for running the process
+        internal static void Run() {
+            // Make sure the site connection is up
+            if (!Globals.CM.Connected()) {
+                if (!Globals.CM.Connect()) return;
+            }
+
+            // Get a shell from the connection
+            var shell = Globals.CM.Shell();
+            if (shell == null) { return; }
+
+            Globals.GUI.AddStatus("Copying XLN file to init user home directory");
+            Globals.CM.CopyFile("/etc/opt/defty/xln1", "/var/home/init/auditor_xln1");
+
+            Globals.GUI.AddStatus("Compressing XLN file");
+            Globals.CM.GZipFile("/var/home/init/auditor_xln1");
+
+            Globals.GUI.AddStatus("Downloading compressed XLN file to local PC");
+            Globals.CM.RecieveFile("/var/home/init/auditor_xln1.gz", Globals.XLN_FILE);
+
+            Globals.GUI.AddStatus("XLN retrieval process complete");
+        }
+    }
+}
+
+
+====================================================================
+FILE: Modules\Repairer.cs
+====================================================================
+
+/*
+ * Auditor3 :: Repairer
+ * 
+ * This class defines the process that runs the fix commands from the Auditor process.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.IO;
+using Renci.SshNet;
+
+namespace Auditor3 {
+    internal static class Repairer {
+        private static ShellStream _shell;
+
+        // This method is used to start the repairer
+        internal static void Start() {
+            // Set the state/process, set the start time, and add a status message
+            Globals.STATE = State.RUNNING;
+            Globals.PROCESS = Process.REPAIR;
+            Globals.START_TIME = DateTime.Now;
+            Globals.GUI.AddStatus("Repair machine is starting");
+
+            try {
+                Run();
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured while running repair commands", error);
+            }
+
+            Globals.CM.CloseTCM(_shell);
+            Globals.CM.CloseOSSI(_shell);
+            _shell.Dispose();
+            _shell = null;
+
+            // Write the report
+            var output = Globals.GUI.GetOutput();
+            var report = Globals.REPORT("repair");
+            var writer = new StreamWriter(report);
+            writer.Write(output);
+            writer.Close();
+
+            Globals.GUI.AddStatus($"Repair machine report generated at {report}");
+
+            Globals.GUI.Idle();
+        }
+
+        // This method is used to run the collector
+        internal static void Run() {
+            // Make sure the site connection is up
+            if (!Globals.CM.Connected()) {
+                if (!Globals.CM.Connect()) return;
+            }
+
+            // Get a shell from the connection
+            _shell = Globals.CM.Shell();
+            if (_shell == null) { return; }
+
+            // Add the header to the report
+            Globals.GUI.AddOutput($"Repair Machine v{Globals.VERSION()}");
+            Globals.GUI.AddOutput("");
+            Globals.GUI.AddOutput($"CM_RELEASE    : {Globals.CM_RELEASE}");
+            Globals.GUI.AddOutput($"STATIONS      : {Globals.STATION_AUDITS}");
+            Globals.GUI.AddOutput($"TRUNKS        : {Globals.TRUNK_AUDITS}");
+            Globals.GUI.AddOutput($"ANNOUNCEMENTS : {Globals.ANNOUNCEMENT_AUDITS}");
+            Globals.GUI.AddOutput($"START TIME    : {Globals.TIMESTAMP()}");
+            Globals.GUI.AddOutput("");
+
+            // Open OSSI and TCM
+            if (!Globals.CM.OpenOSSI(_shell)) return;
+            if (!Globals.CM.OpenTCM(_shell)) return;
+
+            Globals.GUI.AddOutput($"Total repair commands: {Fixer.FixLines.Count}");
+            Globals.GUI.AddStatus("Running repair commands");
+
+            var output = "";
+
+            Audits.ToCheck = Fixer.FixLines.Count;
+            Audits.Checked = 0;
+
+            foreach (var cmd in Fixer.FixLines) {
+                if (Globals.CANCEL) break;
+                Audits.Checked++;
+                var tcm = Globals.CM.RunTCMCommand(_shell, cmd);
+                if (tcm == null) return;
+                else output += tcm;
+
+                if ((Audits.Checked % 10) == 0 && !Globals.WYLD_STALLYN) {
+                    Globals.GUI.AddOutput(output);
+                    output = "";
+                }
+            }
+
+            if (!Globals.WYLD_STALLYN) {
+                Globals.GUI.AddOutput(output);
+                Globals.GUI.AddOutput("");
+            }            
+
+            var runtime = (DateTime.Now - Globals.START_TIME).TotalSeconds;
+            Globals.GUI.AddOutput($"Repair machine completed in {runtime} seconds");
+        }
+    }
+}
+
+
+====================================================================
+FILE: Modules\ScriptRunner.cs
+====================================================================
+
+/*
+ * Auditor3 :: ScriptRunner
+ * 
+ * This class defines the process that runs a custom fix script.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.IO;
+
+namespace Auditor3 {
+    internal static class ScriptRunner {
+        // Method for running the custom script from a local file
+        internal static void RunLocal(string filename) {
+            // Set the state/process, set the start time, and add a status message
+            Globals.STATE = State.RUNNING;
+            Globals.PROCESS = Process.LOADSCRIPT;
+            Globals.START_TIME = DateTime.Now;
+
+            Fixer.Initialize();
+
+            try {
+                Globals.GUI.AddStatus($"Reading custom fix script from {filename}");
+                var file = new StreamReader(filename);
+                var fixes = file.ReadToEnd();
+                file.Close();
+                Globals.GUI.AddStatus("Adding fixes to table");
+                Fixer.AddFix(fixes);
+
+                if (Fixer.FixLines.Count == 0) Globals.GUI.Error("No fixes were detected in the provided file");
+                else Repairer.Start();
+
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured while executing custom fix script", error);
+            }
+
+            Globals.GUI.Idle();
+        }
+
+        // Method for running the custom script from a ToolsA file
+        internal static void RunToolsA(string filename) {
+            // Set the state/process, set the start time, and add a status message
+            Globals.STATE = State.RUNNING;
+            Globals.PROCESS = Process.LOADSCRIPT;
+            Globals.START_TIME = DateTime.Now;
+
+            Fixer.Initialize();
+
+            try {
+                Globals.GUI.AddStatus($"Reading custom fix script from {filename}");
+
+                var fixes = Globals.TOOLSA.Cat(filename);
+
+                Globals.GUI.AddStatus("Adding fixes to table");
+                Fixer.AddFix(fixes);
+
+                if (Fixer.FixLines.Count == 0) Globals.GUI.Error("No fixes were detected in the provided file");
+                else Repairer.Start();
+
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured while executing custom fix script", error);
+            }
+
+            Globals.GUI.Idle();
+        }
+    }
+}
+
+
+====================================================================
+FILE: Objects\CMRelease.cs
+====================================================================
+
+/*
+ * Auditor3 :: CMRelease
+ * 
+ * This enum defines the versions of CM this tool supports.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal enum CMRelease {
+        CM10_2,
+        CM10_1,
+        CM8_1,
+        CM8_0,
+        CM7_1,
+        CM7_0,
+        CM6_3,
+        CM6_2,
+        CM6_0_1,
+        CM5_2_1
+    }
+}
+
+
+====================================================================
+FILE: Objects\LabInfo.cs
+====================================================================
+
+/*
+ * Auditor3 :: LabInfo
+ * 
+ * This class defines a lab system and it's IP address. The version string is used to
+ * define the type of gateway (G430 versus G450, as opposed to it's firmware level)
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    public class LabInfo {
+        public string Version { get; set; }
+        public string IP { get; set; }
+        public bool Active { get; set; }
+    }
+}
+
+
+====================================================================
+FILE: Objects\MissingStationType.cs
+====================================================================
+
+/*
+ * Auditor3 :: MissingStationType
+ * 
+ * This class defines the variables needed to track station types the tool does not support 
+ * so they can be added.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class MissingStationType {
+        internal string Type;       // The type bits for the station
+        internal string UID;        // The UID of the station
+        internal string MO;         // The MO for the station, if found
+        internal string Port;       // The port of the station, if found
+    }
+}
+
+
+====================================================================
+FILE: Objects\Mode.cs
+====================================================================
+
+/*
+ * Auditor3 :: Mode
+ * 
+ * This enum defines the modes that the application runs under.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal enum Mode {
+        LIVE,
+        LAB,
+        OFFLINE
+    }
+}
+
+
+====================================================================
+FILE: Objects\PatchInfo.cs
+====================================================================
+
+/*
+ * Auditor3 :: PatchInfo
+ * 
+ * This class defines a patch that can be loaded onto a lab system
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    public class PatchInfo {
+        public string Version { get; set; }
+        public string Patch { get; set; }
+        public string Release { get; set; }
+        public string URL { get; set; }
+    }
+}
+
+
+====================================================================
+FILE: Objects\PRECType.cs
+====================================================================
+
+/*
+ * Auditor3 :: PRECType
+ * 
+ * This enum defines the various PREC types supported in the application.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal enum PRECType {
+        UNKNOWN,
+
+        PR_BARRY,
+
+        PR_AMW,
+        PR_BRIDGE,
+        PR_BUTTON,
+        PR_EXT,
+        PR_FEXT,
+        PR_MOBD,
+        PR_MOPORT,
+        PR_OPT_STN,
+        PR_PORT_UID,
+        PR_ST_CPS,
+        PR_STN,
+        PR_TTISET,
+        PR_UDATA,
+        PR_XMAP,
+
+        PR_AN_GRP,
+        PR_AG_MBR,
+        PR_GM_IANC_BD,
+        PR_IANC_BD,
+        PR_INT_ANNC,
+        PR_AUDIO_GRP,
+
+        PR_ACD_TRUNK,
+        PR_TR_GRP,
+        PR_TR_MBR,
+        PR_TRUNK
+    }
+}
+
+
+====================================================================
+FILE: Objects\Process.cs
+====================================================================
+
+/*
+ * Auditor3 :: Process
+ * 
+ * This enum defines the processes that are run in the application.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal enum Process {
+        NONE,
+        INITIALIZING,
+        LOADPRECS,
+        AUDIT,
+        PARSER,
+        COLLECT,
+        REPAIR,
+        EECCR_AUDIT,
+        LOADSCRIPT,
+        PULLXLN,
+        STAGELAB,
+
+        // Auditor sub-processes
+        PR_AMW_LOOP,
+        PR_STN_LOOP,
+        PR_ST_CPS_LOOP,
+        PR_EXT_LOOP,
+        PR_FEXT_LOOP,
+        PR_PORT_UID_LOOP,
+        PR_BUTTON_LOOP,
+        PR_MOPORT_LOOP,
+        PR_BRIDGE_LOOP,
+        PR_UDATA_LOOP,
+        PR_XMAP_LOOP,
+        PR_OPT_STN_LOOP,
+
+        PR_INT_ANNC_LOOP,
+        PR_IANC_BD_LOOP,
+        PR_GM_IANC_BD_LOOP,
+        PR_AUDIO_GRP_LOOP,
+
+        PR_ACD_TRUNK_LOOP,
+        PR_TR_GRP_LOOP,
+        TRUNKS_LOOP
+    }
+}
+
+
+====================================================================
+FILE: Objects\State.cs
+====================================================================
+
+/*
+ * Auditor3 :: State
+ * 
+ * This enum defines the states of the application.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal enum State {
+        IDLE,
+        INIT,
+        RUNNING
+    }
+}
+
+
+====================================================================
+FILE: Objects\StationType.cs
+====================================================================
+
+/*
+ * Auditor3 :: StationType
+ * 
+ * This enum defines the various station types supported in the application.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal enum StationType {
+        NoSet,
+        Console,
+        GenericH323,
+        x500,
+        x500Rotary,
+        x1408,
+        x1416,
+        x1603,
+        x1608,
+        x1616,
+        x2402,
+        x2410,
+        x2420,
+        x2500,
+        x3100,
+        x3150d,
+        x4601p,
+        x4602p,
+        x4606,
+        x4610,
+        x4612,
+        x4620,
+        x4620Sip,
+        x4622,
+        x4624,
+        x4630,
+        x603a1,
+        x603d1,
+        x603f1,
+        x606a1,
+        x6210,
+        x6221,
+        x6218,
+        x6402b,
+        x6402d,
+        x6408b,
+        x6408d,
+        x6416cmv,
+        x7101a,
+        x7211,
+        x7405d,
+        x7406p,
+        x7410d,
+        x7444d,
+        x8110,
+        x8403b,
+        x8405b,
+        x8405bp,
+        x8410b,
+        x8410d,
+        x8411b,
+        x8411d,
+        x8434d,
+        x8503,
+        x8510,
+        x602a1,
+        x603e1,
+        x7401,
+        x7401p,
+        x7407p,
+        x7410p,
+        x7434d,
+        x7434nd,
+        x8405,
+        x9404,
+        x9408,
+        x9601p,
+        x9608,
+        x9608Sip,
+        x9608SipCc,
+        x9610,
+        x9611,
+        x9611Sip,
+        x9611SipCc,
+        x9620,
+        x9620Sip,
+        x9621,
+        x9621Sip,
+        x9621SipCc,
+        x9630,
+        x9630Sip,
+        x9641,
+        x9641Sip,
+        x9641SipCc,
+        x9650,
+        x9650Sip,
+        AnalogAwoh,
+        BriAsai,
+        BriAdjunctLink,
+        CallrId,
+        Cti,
+        Bp6408,
+        Dp6408,
+        Dp6416,
+        Dp6424,
+        Dp8405,
+        Idt,
+        Lcdt,
+        OpsPrimary,
+        Vmi,
+        Agent,
+        Adjunct,
+        MusicOnHold,
+        Xmobile,
+        SbsNoHardware,
+        WorldClassBri,
+        AnnMusic,
+        Audix,
+        EALERT,
+        FDVRU,
+        VRU,
+        J179,
+        Unknown
+    }
+}
+
+
+====================================================================
+FILE: Objects\UpdateInfo.cs
+====================================================================
+
+/*
+ * Auditor3 :: UpdateInfo
+ * 
+ * This class defines the details of the latest release package on ToolsA.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    public class UpdateInfo {
+        public int VERSION_MAJOR = 0;           // The major version number
+        public int VERSION_MINOR = 0;           // The minor version number
+        public int BUILD_NUMBER = 0;            // The build number (from version 1.0)
+        public string FILE_NAME = "null";       // The file name of the package
+    }
+}
+
+
+====================================================================
+FILE: Objects\UserData.cs
+====================================================================
+
+/*
+ * Auditor3 :: UserData
+ * 
+ * This class defines the user configurable options. This class is public to allow for XML
+ * serialization.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using Auditor3.Locations;
+
+namespace Auditor3 {
+    public class UserData {
+        public string ToolsAServer = "st3tds04.us1.avaya.com";
+        public string ToolsAUsername = "";
+        public string ToolsAPassword = "";
+        public string DRCCDUsername = "";
+        public string DRCCDPassword = "";
+        public string DefaultLabIP = "";
+        public string DefaultLivePort = "22";
+        public LocationID Location = LocationID.CORPORATE;
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_ACD_TRUNK.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_ACD_TRUNK
+ * 
+ * This class defines a PR_ACD_TRUNK record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_ACD_TRUNK {
+        internal string[] PREC;         // The raw PREC data
+        internal string TrunkGroupUID;  // The UID for the trunk group
+        internal string TrunkMemberUID; // The UID for the trunk member
+        internal string TrunkType;      // The type of trunk
+        internal string Split;          // The UID of the split
+        internal string MeasuredBy;     // The measured by field **(actually both meas_by and h323_pn)**
+        internal bool Flagged;          // This is used to flag the UID pair as reported duplicate
+
+        // Constructor for creating the record
+        internal PR_ACD_TRUNK(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+            var line2 = prec[1].Split(' ');
+
+            // Parse out the basic values
+            TrunkGroupUID = line1[1];
+            TrunkMemberUID = line1[2];
+            TrunkType = line1[3];
+            Split = line1[4];
+            MeasuredBy = line2[2];
+        }
+
+        // Check for if there are duplicate records
+        private bool _hasDuplicates;
+        private bool _checkedDuplicates;
+        internal bool HasDuplicates() {
+            if (!_checkedDuplicates) {
+                var pr_acd_trunks = Database.PR_ACD_TRUNKs.FindAll(a => a.TrunkGroupUID == TrunkGroupUID &&
+                    a.TrunkMemberUID == TrunkMemberUID);
+                _hasDuplicates = pr_acd_trunks.Count > 1;
+                _checkedDuplicates = true;
+            }
+            return _hasDuplicates;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_AG_MBR.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_AG_MBR
+ * 
+ * This class defines a PR_AG_MBR record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_AG_MBR {
+        internal string[] PREC;         // The raw PREC data
+        internal string AudioGroup;     // The audio group for the record
+        internal string MemberNumber;   // The member number for this record
+        internal string Board;          // The board for this record
+
+        // Constructor for creating the record
+        internal PR_AG_MBR(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            AudioGroup = line1[2].Substring(6, 2);
+            MemberNumber = line1[2].Substring(0, 4);
+            Board = line1[3];
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_AMW.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_AMW
+ * 
+ * This class defines a PR_AMW record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System.Text;
+
+namespace Auditor3 {
+    internal class PR_AMW {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string ActualUID;      // The actual UID for the station with high bit corrected
+        internal bool IsMWI;            // Flag for if this is a station MWI instead of aut_msg_wt button
+        internal string Extension;      // The extension being monitored
+        internal bool DupFlagged;       // Flag for if this record has been flagged as duplicate
+        internal string UnpackedExt;
+
+        // Constructor for creating the record
+        internal PR_AMW(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the data
+            UID = line1[3];
+
+            if (UID.StartsWith("8")) {
+                IsMWI = true;
+                ActualUID = "0" + UID.Remove(0, 1);
+            } else ActualUID = UID;
+
+            Extension = Globals.AMW_EXT(line1[1], line1[2]);
+            UnpackedExt = Globals.UNPACK_EXTENSION(line1[2] + line1[1]);
+        }
+
+        // Method for checking if this records has duplicates
+        internal bool HasDuplicates() {
+            var check = Database.PR_AMWs.FindAll(a => a.UID == UID && a.Extension == Extension);
+            if (check.Count > 1) foreach (var rec in check) rec.DupFlagged = true;
+            return check.Count > 1;
+        }
+
+        // Method for checking if there is a second record with a MWI
+        internal bool HasMWI() {
+            var check = Database.PR_AMWs.Find(a => a.ActualUID == ActualUID && a.Extension == Extension && IsMWI);
+            return check != null;
+        }
+
+        // Method for checking if this record is mismatched
+        internal bool IsMismatched() {
+            var check = Database.PR_BUTTONs.Find(a => a.AMW && a.AMWExt == Extension && a.UID == ActualUID);
+
+            if (IsMWI && check != null && !HasMWI()) return true;
+            if (!IsMWI && check == null) return true;
+            return false;
+        }
+
+        // Method for checking if MWL_EXT is mismatched
+        internal bool MwlExtMismatch() {
+            if (!IsMWI && !IsMismatched()) return false;
+            var pr_stn = Database.PR_STNs.Find(a => a.UID == ActualUID);
+            if (pr_stn == null) return false;
+            return pr_stn.MWLExt != UnpackedExt;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_AN_GRP.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_AN_GRP
+ * 
+ * This class defines a PR_AN_GRP record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_AN_GRP {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string AudioGroup;     // The audio group for the record
+
+        // Constructor for creating the record
+        internal PR_AN_GRP(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the data
+            UID = line1[1];
+            AudioGroup = line1[4].Substring(4, 2);
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_AUDIO_GRP.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_AUDIO_GRP
+ * 
+ * This class defines a PR_AUDIO_GRP record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_AUDIO_GRP {
+        internal string[] PREC;         // The raw PREC data
+        internal string AudioGroup;     // The audio group for the record
+
+        // Constructor for creating the record
+        internal PR_AUDIO_GRP(string[] prec) {
+            PREC = prec;
+            
+            var line1 = prec[0].Split(' ');
+
+            AudioGroup = line1[2].Substring(6, 2);
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_BARRY.cs
+====================================================================
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Auditor3 {
+    internal class PR_BARRY {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string GID = string.Empty;            // The GID for the record
+        internal string Digits = string.Empty;         // The digits for the extension
+
+        internal PR_BARRY(string[] prec) {
+            PREC = prec;
+            var split = prec[0].Split(' ');
+            UID = split[1];
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_BRIDGE.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_BRIDGE
+ * 
+ * This class defines a PR_BRIDGE record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_BRIDGE {
+        internal string[] PREC;         // The raw PREC data
+        internal string PrimaryUID;     // The primary UID of the record
+        internal string BridgedUID;     // The bridged UID of the record
+        internal string BridgeID;       // The ID of the record
+
+        // Constructor for creating the records
+        internal PR_BRIDGE(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            PrimaryUID = line1[1];
+            BridgedUID = line1[2];
+            BridgeID = line1[3].Substring(4, 4);
+        }
+
+        // Check for if this record has a valid primary UID
+        private bool _hasValidPrimaryUID;
+        private bool _checkedValidPrimaryUID;
+        internal bool HasValidPrimaryUID() {
+            if (!_checkedValidPrimaryUID) {
+                var pr_stn = Database.PR_STNs.Find(a => a.UID == PrimaryUID);
+                _hasValidPrimaryUID = pr_stn != null;
+                _checkedValidPrimaryUID = true;
+            }
+            return _hasValidPrimaryUID;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_BUTTON.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_BUTTON
+ * 
+ * This class defines a PR_BUTTON record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System.Text;
+
+namespace Auditor3 {
+    internal class PR_BUTTON {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string Number;         // The number for this button
+        internal string Type;           // The button type
+        internal bool Bridged;          // Flag for if this is a bridged appearance
+        internal string BridgedUID;     // The UID for the bridged appearance
+        internal string BridgedID;      // The ID for the bridged appearance
+        internal bool AMW;              // Flag for if this is an AMW button
+        internal string AMWExt;         // The extension for the AMW
+
+        // Constructor for creating the record
+        internal PR_BUTTON(string[] prec) {
+            // Store the PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[1];
+            Number = line1[2].Substring(4, 4);
+            Type = line1[2].Substring(0, 4);
+
+            // Bridged appearances need additional handling
+            if (Type == "0049") {
+                Bridged = true;
+                BridgedID = line1[3].Substring(0, 4);
+                BridgedUID = $"0000{line1[3].Substring(4,4)}";
+            }
+
+            // AMW handling
+            if (Type == "0046") {
+                AMW = true;
+                AMWExt = Globals.AMW_EXT(line1[3], line1[4]);
+            }
+        }
+
+        // Check for if this button has a valid bridged UID
+        private bool _hasValidBridgedUID;
+        private bool _checkedValidBridgedUID;
+        internal bool HasValidBridgedUID() {
+            if (!_checkedValidBridgedUID) {
+                var pr_stn = Database.PR_STNs.Find(a => a.UID == BridgedUID);
+                _hasValidBridgedUID = Bridged && pr_stn != null;
+                _checkedValidBridgedUID = true;
+            }
+            return _hasValidBridgedUID;
+        }
+
+        // Check for if this record has a PR_STN with the same UID
+        private bool _hasSTN;
+        private bool _checkedSTN;
+        internal bool HasSTN() {
+            if (!_checkedSTN) {
+                var check = Database.PR_STNs.Find(a => a.UID == UID);
+                _hasSTN = check != null;
+                _checkedSTN = true;
+            }
+            return _hasSTN;
+        }
+
+        // Check for if this record has a PR_UDATA with the same UID
+        private bool _hasUDATA;
+        private bool _checkedUDATA;
+        internal bool HasUDATA() {
+            if (!_checkedUDATA) {
+                var check = Database.PR_UDATAs.Find(a => a.UID == UID);
+                _hasUDATA = check != null;
+                _checkedUDATA = true;
+            }
+            return _hasUDATA;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_EXT.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_EXT
+ * 
+ * This class defines a PR_EXT record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System.Linq;
+
+namespace Auditor3 {
+    internal class PR_EXT {
+
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string GID;            // The GID for the record
+        internal string Digits;         // The digits for the extension
+        
+        // Constructor for creating the record
+        internal PR_EXT(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[4];
+            GID = UID.Substring(0, 4);
+
+            // Convert the extension digits
+            SetDigits(line1[1], line1[2]);
+        }
+
+        // This method is used to get the PREC fields for removing this record
+        internal string PRECFields() {
+            var line = PREC[0].Split(' ');
+            return $"l0x{line[1]} l0x{line[2]}";
+        }
+
+        // Check for if this record has a PR_UDATA with the same UID
+        private bool _hasUDATA;
+        private bool _checkedUDATA;
+        internal bool HasUDATA() {
+            if (!_checkedUDATA) {
+                var check = Database.PR_UDATAs.Find(a => a.UID == UID);
+                _hasUDATA = check != null;
+                _checkedUDATA = true;
+            }
+            return _hasUDATA;
+        }
+
+        // Check for if this record has a PR_INT_ANNC
+        private bool _hasINTANNC;
+        private bool _checkedINTANNC;
+        internal bool HasINTANNC() {
+            if (!_checkedINTANNC) {
+                var pr_int_annc = Database.PR_INT_ANNCs.Find(a => a.UID == UID);
+                _hasINTANNC = pr_int_annc != null;
+                _checkedINTANNC = true;
+            }
+            return _hasINTANNC;
+        }
+
+        // This method is used to get the extension digits from the PREC words
+        private void SetDigits(string field1, string field2) {
+            // Take the upper bytes from the first field so we can drop the length value
+            field1 = field1.Substring(0, 4);
+
+            // Reverse the digit strings
+            field1 = new string(field1.ToCharArray().Reverse().ToArray());
+            field2 = new string(field2.ToCharArray().Reverse().ToArray());
+
+            // Combine the two fields
+            var digits = field1 + field2;
+
+            // Iterate through the digits until we hit a 0, b, or f, signifying the end of the string, 
+            // then convert any 'a' to the actual digit 0, then aggregate it into a string and store it
+            Digits = digits.TakeWhile(digit => digit != '0' && digit != 'b' && digit != 'f').Select(digit => digit == 'a' ? '0' : digit).Aggregate("", (current, actualDigit) => current + actualDigit);
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_FEXT.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_FEXT
+ * 
+ * This class defines a PR_FEXT record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System.Linq;
+
+namespace Auditor3 {
+    internal class PR_FEXT {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record        
+        internal string Digits;         // The digits for the extension
+        internal bool IsStation;        // Flag if the extension is for a station
+
+        // Constructor for creating the record
+        internal PR_FEXT(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[4];
+            SetDigits(line1[1], line1[2]);
+            IsStation = UID.StartsWith("0000");
+        }
+
+        // This method is used to get the extension digits from the PREC words
+        private void SetDigits(string field1, string field2) {
+            // Take the upper bytes from the first field so we can drop the length value
+            field1 = field1.Substring(0, 4);
+
+            // Reverse the digit strings
+            field1 = new string(field1.ToCharArray().Reverse().ToArray());
+            field2 = new string(field2.ToCharArray().Reverse().ToArray());
+
+            // Combine the two fields
+            var digits = field1 + field2;
+
+            // Iterate through the digits until we hit a 0, b, or f, signifying the end of the string, 
+            // then convert any 'a' to the actual digit 0, then aggregate it into a string and store it
+            Digits = digits.TakeWhile(digit => digit != '0' && digit != 'b' && digit != 'f').Select(digit => digit == 'a' ? '0' : digit).Aggregate("", (current, actualDigit) => current + actualDigit);
+        }
+
+        // Check for if there is a PR_UDATA record
+        private bool _hasUDATA;
+        private bool _checkedUDATA;
+        internal bool HasUDATA() {
+            if (!_checkedUDATA) {
+                var check = Database.PR_UDATAs.Find(a => a.UID == UID);
+                _hasUDATA = check != null;
+                _checkedUDATA = true;
+            }
+            return _hasUDATA;
+        }
+
+        // Check for if there is a duplicate record
+        private bool _hasDuplicateUID;
+        private bool _checkedDuplicateUID;
+        internal bool HasDuplicateUID() {
+            if (!_checkedDuplicateUID) {
+                var pr_fexts = Database.PR_FEXTs.FindAll(a => a.UID == UID);
+                _hasDuplicateUID = pr_fexts.Count > 1;
+                _checkedDuplicateUID = true;
+            }
+          
+            return _hasDuplicateUID;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_GM_IANC_BD.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_GM_IANC_BD
+ * 
+ * This class defines a PR_GM_IANC_BD record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_GM_IANC_BD {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string Board;          // The board for the record
+
+        // Constructor for creating the record
+        internal PR_GM_IANC_BD(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[1];
+            Board = line1[2];
+        }
+
+        // Method for checking if there is a PR_AG_MBR
+        internal bool HasAGMBR(string audiogroup) {
+            var check = Database.PR_AG_MBRs.Find(a => a.AudioGroup == audiogroup && a.Board == Board);
+            return check != null;
+        }
+
+        // Check for if there are duplicate records
+        private bool _hasDuplicates;
+        private bool _checkedDuplicates;
+        internal bool HasDuplicates() {
+            if (!_checkedDuplicates) {
+                var pr_gm_ianc_bds = Database.PR_GM_IANC_BDs.FindAll(a => a.UID == UID && a.Board == Board);
+                _hasDuplicates = pr_gm_ianc_bds.Count > 1;
+                _checkedDuplicates = true;
+            }
+            return _hasDuplicates;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_IANC_BD.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_IANC_BD
+ * 
+ * This class defines a PR_IANC_BD record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_IANC_BD {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string Board;          // The board for the record
+
+        // Constructor for creating the record
+        internal PR_IANC_BD(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[1];
+            Board = line1[2];
+        }
+
+        // Check for if there are duplicate records
+        private bool _hasDuplicates;
+        private bool _checkedDuplicates;
+        internal bool HasDuplicates() {
+            if (!_checkedDuplicates) {
+                var pr_ianc_bds = Database.PR_IANC_BDs.FindAll(a => a.UID == UID && a.Board == Board);
+                _hasDuplicates = pr_ianc_bds.Count > 1;
+                _checkedDuplicates = true;
+            }
+            return _hasDuplicates;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_INT_ANNC.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_INT_ANNC
+ * 
+ * This class defines a PR_INT_ANNC record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_INT_ANNC {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string Board;          // The board for the record
+        internal string LName;          // The lname for the board
+        internal string FileIndex;      // The file index for the board
+        internal string AudioGroup;     // The audio group for the record
+        internal string IndexLName;     // The combined lname/index fields
+        
+        // Constructor for creating the record
+        internal PR_INT_ANNC(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+            var line3 = prec[2].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[1];
+            Board = line1[2];
+            LName = line1[3].Substring(4, 4);
+            FileIndex = line1[3].Substring(0, 4);
+            IndexLName = line1[3];
+            AudioGroup = line3[4].Substring(6, 2);
+        }
+
+
+        // Check for if there is a PR_GM_IANC_BD record
+        private bool _hasGMIANCBD;
+        private bool _checkedGMIANCBD;
+        internal bool HasGMIANCBD() {
+            if (!_checkedGMIANCBD) {
+                var pr_gm_ianc_bd = Database.PR_GM_IANC_BDs.Find(a => a.Board == Board && a.UID == UID);
+                _hasGMIANCBD = pr_gm_ianc_bd != null;
+                _checkedGMIANCBD = true;
+            }
+            return _hasGMIANCBD;
+        }
+
+        // Check for if there is a PR_IANC_BD record
+        private bool _hasIANCBD;
+        private bool _checkedIANCBD;
+        internal bool HasIANCBD() {
+            if (!_checkedIANCBD) {
+                var pr_ianc_bd = Database.PR_IANC_BDs.Find(a => a.Board == Board && a.UID == UID);
+                _hasIANCBD = pr_ianc_bd != null;
+                _checkedIANCBD = true;
+            }
+            return _hasIANCBD;
+        }
+
+        // Check for if there is a PR_EXT record
+        private bool _hasEXT;
+        private bool _checkedEXT;
+        internal bool HasEXT() {
+            if (!_checkedEXT) {
+                var pr_ext = Database.PR_EXTs.Find(a => a.UID == UID);
+                _hasEXT = pr_ext != null;
+                _checkedEXT = true;
+            }
+            return _hasEXT;
+        }
+
+        // Check for if this record has a PR_UDATA with the same UID
+        private bool _hasUDATA;
+        private bool _checkedUDATA;
+        internal bool HasUDATA() {
+            if (!_checkedUDATA) {
+                var check = Database.PR_UDATAs.Find(a => a.UID == UID);
+                _hasUDATA = check != null;
+                _checkedUDATA = true;
+            }
+            return _hasUDATA;
+        }
+
+        // Check for if this record has an AG mismatch
+        private bool _hasAGMismatch;
+        private bool _checkedAGMismatch;
+        internal bool HasAGMismatch() {
+            if (!_checkedAGMismatch) {
+                var pr_an_grp = Database.PR_AN_GRPs.Find(a => a.UID == UID);
+                if (pr_an_grp != null)
+                    if (pr_an_grp.AudioGroup != AudioGroup) _hasAGMismatch = true;
+                _checkedAGMismatch = true;
+            }
+            return _hasAGMismatch;
+        }
+
+        // Check for if this record has an PR_AN_GRP
+        private bool _hasANGRP;
+        private bool _checkedANGRP;
+        internal bool HasANGRP() {
+            if (!_checkedANGRP) {
+                var pr_an_grp = Database.PR_AN_GRPs.Find(a => a.UID == UID);
+                _hasANGRP = pr_an_grp != null;
+                _checkedANGRP = true;
+            }
+            return _hasANGRP;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_MOBD.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_MOBD
+ * 
+ * This class defines a PR_MOBD record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_MOBD {
+        internal string[] PREC;         // The raw PREC data
+        internal string Board;          // The board address
+
+        // Constructor for creating the record
+        internal PR_MOBD(string[] prec) {
+            PREC = prec;
+            var line1 = prec[0].Split(' ');
+            Board = line1[2];
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_MOPORT.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_MOPORT
+ * 
+ * This class defines a PR_MOPORT record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_MOPORT {
+        internal string[] PREC;         // The raw PREC data
+        internal string Port;           // The port for the record
+        internal string MO;             // The MO for the record
+        internal bool IsAuditable;      // Flag tracking if this is an auditable record
+
+        // Constructor for creating the record
+        internal PR_MOPORT(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            Port = line1[3];
+            MO = line1[1].Substring(4, 4);
+
+            // Set the auditable flag
+            IsAuditable = MO != "0c13";
+        }
+
+        // This is used to retrive the UID for this from the PR_ST_CPS record
+        private string _uid;
+        private bool _checkedUID;
+        internal string UID() {
+            if (!_checkedUID) {
+                var pr_st_cps = Database.PR_ST_CPSs.Find(a => a.Port == Port);
+                _uid = pr_st_cps != null ? pr_st_cps.UID : Globals.NULL_UID;
+                _checkedUID = true;
+            }
+            return _uid;
+        }
+
+        private string _tguid;
+        private bool _checkedtguid;
+        internal string TGUID() {
+            if (!_checkedtguid) {
+                var pr_port_uid = Database.PR_PORT_UIDs.Find(a => a.Port == Port);
+                _tguid = pr_port_uid != null ? pr_port_uid.UID : Globals.NULL_UID;
+                _checkedtguid = true;
+            }
+            return _tguid;
+        }
+
+        // Check for if this record has a PR_ST_CPS with the same port
+        private bool _hasSTCPS;
+        private bool _checkedSTCPS;
+        internal bool HasSTCPS() {
+            if (!_checkedSTCPS) {
+                var check = Database.PR_PORT_UIDs.Find(a => a.Port == Port);
+                _hasSTCPS = check != null;
+                _checkedSTCPS = true;
+            }
+            return _hasSTCPS;
+        }
+
+        // Check for if this record has a PR_PORT_UID with the same UID
+        private bool _hasPORTUID;
+        private bool _checkedPORTUID;
+        internal bool HasPORTUID() {
+            if (!_checkedPORTUID) {
+                var check = Database.PR_PORT_UIDs.Find(a => a.Port == Port);
+                _hasPORTUID = check != null;
+                _checkedPORTUID = true;
+            }
+            return _hasPORTUID;
+        }
+
+        // Check for if this record has a PR_TRUNK
+        private bool _hasTRUNK;
+        private bool _checkedTRUNK;
+        internal bool HasTRUNK() {
+            if (!_checkedTRUNK) {
+                var check = Database.PR_TRUNKs.Find(a => a.Port == Port);
+                _hasTRUNK = check != null;
+                _checkedTRUNK = true;
+            }
+            return _hasTRUNK;
+        }
+
+        // Method for getting the trunk UID
+        internal string TrunkUID() {
+            var check = Database.PR_TRUNKs.Find(a => a.Port == Port);
+            return check != null ? check.UID : Globals.NULL_UID;
+        }
+    }
+}
+
+====================================================================
+FILE: PRECs\PR_OPT_STN.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_OPT_STN
+ * 
+ * This class defines a PR_OPT_STN record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_OPT_STN {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+
+        // Constructor for creating the records
+        internal PR_OPT_STN(string[] prec) {
+            // Store the PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+            UID = line1[1];
+        }
+
+        // Check for if this record has a PR_XMAP
+        private bool _hasXMAP;
+        private bool _checkedXMAP;
+        internal bool HasXMAP() {
+            if (!_checkedXMAP) {
+                var xmap = Database.PR_XMAPs.Find(a => a.UID == UID);
+                _hasXMAP = xmap != null;
+                _checkedXMAP = true;
+            }
+            return _hasXMAP;
+        }
+
+        // Check for if this record has a PR_UDATA with the same UID
+        private bool _hasUDATA;
+        private bool _checkedUDATA;
+        internal bool HasUDATA() {
+            if (!_checkedUDATA) {
+                var check = Database.PR_UDATAs.Find(a => a.UID == UID);
+                _hasUDATA = check != null;
+                _checkedUDATA = true;
+            }
+            return _hasUDATA;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_PORT_UID.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_PORT_UID
+ * 
+ * This class defines a PR_PORT_UID record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_PORT_UID {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string GID;            // The GID for the record
+        internal string Port;           // The port for the record
+        internal bool IsAuditable;      // Flag for if audits run against this record
+        internal bool IsTrunk;          // Flag for if this is a trunk record
+
+        // Constructor for creating the record
+        internal PR_PORT_UID(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[2];
+            GID = UID.Substring(0, 4);
+            Port = line1[1];
+
+            // Set the auditable flag for GIDs for STA_USER, ATT_USER, and
+            // SSTA_USER groups
+            IsAuditable = GID == "0000" || GID == "0002" || GID == "0034" || GID == "0020" || GID == "0340";
+            IsTrunk = GID == "0005" || GID == "0083" || GID == "0050" || GID == "0830";
+        }
+
+        // Check for a valid owner of this record
+        private string _validOwner;
+        private bool _checkedValidOwner;
+        internal string ValidOwner() {
+            if (!_checkedValidOwner) {
+                var pr_st_cps = Database.PR_ST_CPSs.Find(a => a.Port == Port);
+                _validOwner = pr_st_cps != null ? pr_st_cps.UID : null;
+                _checkedValidOwner = true;
+            }
+            return _validOwner;
+        }
+
+        // Check for if the UID owns a different port
+        private bool _uidOwnsAnotherPort;
+        private bool _checkUIDOwnsAnotherPort;
+        internal bool UIDOwnsAnotherPort() {
+            if (!_checkUIDOwnsAnotherPort) {
+                var check1 = Database.PR_PORT_UIDs.FindAll(a => a.UID == UID);
+                if (check1.Count != 1) {
+                    var check2 = Database.PR_ST_CPSs.Find(a => a.UID == UID);
+                    if (check2 != null) {
+                        foreach (var port in check1) {
+                            if (port.Port == Port) continue;
+                            if (port.Port == check2.Port) _uidOwnsAnotherPort = true;
+                        }
+                    }
+                }
+                _checkUIDOwnsAnotherPort = true;
+            }
+            return _uidOwnsAnotherPort;
+        }
+
+        // Check for if there is a duplicate port on the UID
+        private bool _uidHasDuplicatePort;
+        private bool _checkUIDDuplicatePort;
+        internal bool UIDHasDuplicatePort() {
+            if (!_checkUIDDuplicatePort) {
+                var check1 = Database.PR_ST_CPSs.Find(a => a.UID == UID);
+                if (check1 != null) {
+                    var check2 = Database.PR_ST_CPSs.FindAll(a => a.Port == check1.Port);
+                    _uidHasDuplicatePort = check2.Count > 1;
+                } else {
+                    _uidHasDuplicatePort = false;
+                }
+                _checkUIDDuplicatePort = true;
+            }
+            return _uidHasDuplicatePort;
+        }
+
+        // Check for if there are multiple PR_ST_CPS that are using the same
+        // port as this record
+        private bool _hasDuplicateSTCPS;
+        private bool _checkedDuplicateSTCPS;
+        internal bool HasDuplicateSTCPS() {
+            if (!_checkedDuplicateSTCPS) {
+                var check = Database.PR_ST_CPSs.FindAll(a => a.Port == Port);
+                _hasDuplicateSTCPS = check.Count > 1;
+                _checkedDuplicateSTCPS = true;
+            }
+            return _hasDuplicateSTCPS;
+        }
+
+        // Check for if this record has a PR_MOPORT with the same port
+        private bool _hasMOPORT;
+        private bool _checkedMOPORT;
+        internal bool HasMOPORT() {
+            if (!_checkedMOPORT) {
+                var check = Database.PR_MOPORTs.Find(a => a.Port == Port);
+                _hasMOPORT = check != null;
+                _checkedMOPORT = true;
+            }
+            return _hasMOPORT;
+        }
+
+        // Check for if this record has a PR_ST_CPS with the same port
+        private bool _hasSTCPS;
+        private bool _checkedSTCPS;
+        internal bool HasSTCPS() {
+            if (!_checkedSTCPS) {
+                var check = Database.PR_ST_CPSs.Find(a => a.UID == UID);
+                _hasSTCPS = check != null;
+                _checkedSTCPS = true;
+            }
+            return _hasSTCPS;
+        }
+
+        // Check for if this record has a PR_STN with the same UID
+        private bool _hasSTN;
+        private bool _checkedSTN;
+        internal bool HasSTN() {
+            if (!_checkedSTN) {
+                var check = Database.PR_STNs.Find(a => a.UID == UID);
+                _hasSTN = check != null;
+                _checkedSTN = true;
+            }
+            return _hasSTN;
+        }
+
+        // Check for if this record has a PR_TRUNK
+        private bool _hasTRUNK;
+        private bool _checkedTRUNK;
+        internal bool HasTRUNK() {
+            if (!_checkedTRUNK) {
+                var check = Database.PR_TRUNKs.Find(a => a.Port == Port);
+                _hasTRUNK = check != null;
+                _checkedTRUNK = true;
+            }
+            return _hasTRUNK;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_STN.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_STN
+ * 
+ * This class defines a PR_STN record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Collections;
+
+namespace Auditor3 {
+    internal class PR_STN {
+
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string GID;            // The GID for the record
+        internal StationType Type;      // The type of station for the record
+        internal bool AWOH;             // Flag for if this is an AWOH station
+        internal string MWLExt;         // The Message Waiting Lamp Extension
+
+        internal bool IsAuditable;      // Flag for if this record should be audited - allows for
+                                        // excluding things like agent records from standard audits
+
+        // Constructor for creating the record
+        internal PR_STN(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+            var line2 = prec[1].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[1];
+            GID = UID.Substring(0, 4);
+
+            // Set the station type
+            SetType(line1[2]);
+
+            // Handle more_info flags
+            var moreInfoByte = Convert.ToInt64(line1[5].Substring(6, 2), 16);
+            var moreInfoFlags = Convert.ToString(moreInfoByte, 2).PadLeft(8, '0');
+            AWOH = moreInfoFlags.Substring(3, 1) == "1";
+
+            MWLExt = Globals.UNPACK_EXTENSION(line2[1] + line1[8]);
+
+            // Set the auditable flag
+            IsAuditable = UID.Substring(0, 4) == "0000" && Type != StationType.Agent && Type != StationType.Adjunct &&
+                Type != StationType.MusicOnHold && Type != StationType.Xmobile && Type != StationType.SbsNoHardware &&
+                Type != StationType.Cti && Type != StationType.AnnMusic && Type != StationType.EALERT;
+        }
+
+        internal string StationExt() {
+            var pr_ext = Database.PR_EXTs.Find(a => a.UID == UID);
+            return pr_ext != null ? pr_ext.Digits : null;
+        }
+
+        // Check for if this record has a PR_TTISET record
+        private bool _hasTTISET;
+        private bool _checkedTTISET;
+        internal bool HasTTISET() {
+            if (!_checkedTTISET) {
+                var pr_ttiset = Database.PR_TTISETs.Find(a => a.UID == UID);
+                _hasTTISET = pr_ttiset != null;
+                _checkedTTISET = true;
+            }
+            return _hasTTISET;
+        }
+
+        // Check for if this record has an AWOH mismatch
+        private bool _hasAWOHMismatch;
+        private bool _checkedAWOHMismatch;
+        internal bool HasAWOHMismatch() {
+            if (!_checkedAWOHMismatch) {
+                var pr_st_cps = Database.PR_ST_CPSs.Find(a => a.UID == UID);
+                var port = pr_st_cps != null ? pr_st_cps.Port : Globals.NULL_PORT;
+                _hasAWOHMismatch = false;
+                if (AWOH && port != Globals.NULL_PORT && !HasTTISET()) _hasAWOHMismatch = true;
+                if (!AWOH && port == Globals.NULL_PORT) _hasAWOHMismatch = true;
+                _checkedAWOHMismatch = true;
+            }
+            return _hasAWOHMismatch;
+        }
+
+        // Check for if this record has matching digits in PR_EXT and PR_FEXT
+        private bool _hasMatchingDigits;
+        private bool _checkedMatchingDigits;
+        internal bool HasMatchingDigits() {
+            if (!_checkedMatchingDigits) {
+                var pr_ext = Database.PR_EXTs.Find(a => a.UID == UID);
+                var pr_fext = Database.PR_FEXTs.Find(a => a.UID == UID);
+                _hasMatchingDigits = pr_ext != null && pr_fext != null && pr_ext.Digits == pr_fext.Digits;
+                _checkedMatchingDigits = true;
+            }
+            return _hasMatchingDigits;
+        }
+
+        // Check for if this record has a PR_EXT with the same UID
+        private bool _hasEXT;
+        private bool _checkedEXT;
+        internal bool HasEXT() {
+            if (!_checkedEXT) {
+                var check = Database.PR_EXTs.Find(a => a.UID == UID);
+                _hasEXT = check != null;
+                _checkedEXT = true;
+            }
+            return _hasEXT;
+        }
+
+        // Check for if this record has a PR_FEXT with the same UID
+        private bool _hasFEXT;
+        private bool _checkedFEXT;
+        internal bool HasFEXT() {
+            if (!_checkedFEXT) {
+                var check = Database.PR_FEXTs.Find(a => a.UID == UID);
+                _hasFEXT = check != null;
+                _checkedFEXT = true;
+            }
+            return _hasFEXT;
+        }
+
+        // Check for if this record has a PR_UDATA with the same UID
+        private bool _hasUDATA;
+        private bool _checkedUDATA;
+        internal bool HasUDATA() {
+            if (!_checkedUDATA) {
+                var check = Database.PR_UDATAs.Find(a => a.UID == UID);
+                _hasUDATA = check != null;
+                _checkedUDATA = true;
+            }
+            return _hasUDATA;
+        }
+
+        // Check for if there is a valid IP port for this station
+        private bool _hasValidIPPort;
+        private bool _checkedValidIPPort;
+        internal bool HasValidIPPort() {
+            if (!_checkedValidIPPort) {
+                var pr_st_cps = Database.PR_ST_CPSs.Find(a => a.UID == UID);
+                _hasValidIPPort = pr_st_cps != null && pr_st_cps.Port.Substring(0, 2) == "7f";
+                _checkedValidIPPort = true;
+            }
+            return _hasValidIPPort;
+        }
+
+        // This method is for checking if this is an IP station type
+        internal bool IsIP() {
+            switch (Type) {
+                case StationType.x9620Sip:
+                case StationType.GenericH323:
+                case StationType.x1603:
+                case StationType.x1608:
+                case StationType.x1616:
+                case StationType.x4602p:
+                case StationType.x4606:
+                case StationType.x4610:
+                case StationType.x4612:
+                case StationType.x4620:
+                case StationType.x4620Sip:
+                case StationType.x4622:
+                case StationType.x4624:
+                case StationType.x9608:
+                case StationType.x9608Sip:
+                case StationType.x9608SipCc:
+                case StationType.x9610:
+                case StationType.x9611:
+                case StationType.x9611Sip:
+                case StationType.x9611SipCc:
+                case StationType.x9620:
+                case StationType.x9621:
+                case StationType.x9621Sip:
+                case StationType.x9630:
+                case StationType.x9630Sip:
+                case StationType.x9641:
+                case StationType.x9641Sip:
+                case StationType.x9650:
+                case StationType.x9650Sip:
+                case StationType.x9621SipCc:
+                case StationType.x9641SipCc:
+                case StationType.x4630:
+                case StationType.x4601p:
+                case StationType.J179:
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        // This method is for getting a stations MO value for PR_MOPORT
+        internal string GetMO() {
+            switch (Type) {
+                case StationType.x2402:
+                case StationType.x8411d:
+                case StationType.x8405:
+                case StationType.Bp6408:
+                case StationType.Dp8405:
+                case StationType.x603d1:
+                case StationType.x603a1:
+                case StationType.Lcdt:
+                case StationType.x602a1:
+                case StationType.x1416:
+                case StationType.x1408:
+                case StationType.x9408:
+                case StationType.Dp6424:
+                case StationType.Dp6416:
+                case StationType.Dp6408:
+                case StationType.x8434d:
+                case StationType.x8410b:
+                case StationType.x603f1:
+                case StationType.Console:
+                case StationType.x606a1:
+                case StationType.x2410:
+                case StationType.x6402d:
+                case StationType.x7444d:
+                case StationType.Idt:
+                case StationType.x7410p:
+                case StationType.x7407p:
+                case StationType.x3150d:
+                case StationType.x7410d:
+                case StationType.x7405d:
+                case StationType.x6416cmv:
+                case StationType.x9404:
+                case StationType.x8411b:
+                case StationType.x7401:
+                case StationType.x7434d:
+                case StationType.x8405bp:
+                case StationType.x8405b:
+                case StationType.x7401p:
+                    return "0401";
+
+                case StationType.x500Rotary:
+                case StationType.x6218:
+                case StationType.x3100:
+                case StationType.x6210:
+                case StationType.x6221:
+                case StationType.x7101a:
+                    return "040c";
+
+                case StationType.BriAdjunctLink:
+                case StationType.BriAsai:
+                case StationType.x8503:
+                case StationType.x8510:
+                case StationType.WorldClassBri:
+                    return "0420";
+
+                case StationType.CallrId:
+                case StationType.x8110:
+                case StationType.x500:
+                case StationType.x2500:
+                case StationType.Vmi:
+                    return "043a";
+
+                case StationType.GenericH323:
+                    return "0442";
+
+                case StationType.x1603:
+                case StationType.x7434nd:
+                case StationType.x1608:
+                case StationType.x4606:
+                case StationType.x4624:
+                case StationType.x9650:
+                case StationType.x9641:
+                case StationType.x9630:
+                case StationType.x9621:
+                case StationType.x9620:
+                case StationType.x9610:
+                case StationType.x9611:
+                case StationType.x9608:
+                case StationType.x4622:
+                case StationType.x4620:
+                case StationType.x4610:
+                case StationType.x4602p:
+                case StationType.x1616:
+                case StationType.x8403b:
+                case StationType.x4630:
+                case StationType.x4601p:
+                case StationType.J179:
+                    return "0444";
+
+                case StationType.x9650Sip:
+                case StationType.x9621Sip:
+                case StationType.x9608SipCc:
+                case StationType.x4620Sip:
+                case StationType.x9608Sip:
+                case StationType.x9620Sip:
+                case StationType.x9641Sip:
+                case StationType.x9611Sip:
+                case StationType.x9630Sip:
+                case StationType.x9611SipCc:
+                case StationType.x9621SipCc:
+                case StationType.x9641SipCc:
+                    return "044a";
+
+                case StationType.FDVRU:
+                case StationType.VRU:
+                    return "0412";
+
+                default:
+                    return null;
+            }
+        }
+
+        // This method is used for setting the station type
+        private void SetType(string value) {
+            // Define a variable to store the type bits
+            string type;
+
+            // Get the type bits depending on the release
+            if (Globals.CM_RELEASE == CMRelease.CM5_2_1 || Globals.CM_RELEASE == CMRelease.CM6_0_1) {
+                type = "0" + value.Substring(6, 2);
+            } else {
+                type = value.Substring(5, 3);
+            }
+
+            // Switch on the type bits and set the type
+            switch (type) {
+                case "001":
+                    Type = StationType.NoSet;
+                    break;
+
+                case "005":
+                    Type = StationType.x3150d;
+                    break;
+
+                case "006":
+                    Type = StationType.x7405d;
+                    break;
+
+                case "007":
+                    Type = StationType.Console;
+                    break;
+
+                case "008":
+                    Type = StationType.x7101a;
+                    break;
+
+                case "009":
+                    Type = StationType.x3100;
+                    break;
+
+                case "00a":
+                    Type = StationType.x8110;
+                    break;
+
+                case "00b":
+                    Type = StationType.x7211;
+                    break;
+
+                case "00e":
+                    Type = StationType.x2500;
+                    break;
+
+                case "010":
+                    Type = StationType.EALERT;
+                    break;
+
+                case "015":
+                    Type = StationType.Idt;
+                    break;
+
+                case "017":
+                    Type = StationType.x500;
+                    break;
+
+                case "022":
+                    Type = StationType.MusicOnHold;
+                    break;
+
+                case "02c":
+                    Type = StationType.Lcdt;
+                    break;
+
+                case "035":
+                    Type = StationType.BriAsai;
+                    break;
+
+                case "038":
+                    Type = StationType.x8510;
+                    break;
+
+                case "03f":
+                    Type = StationType.x2500;
+                    break;
+
+                case "05e":
+                    Type = StationType.x7444d;
+                    break;
+
+                case "05f":
+                    Type = StationType.x7406p;
+                    break;
+
+                case "060":
+                    Type = StationType.x7401p;
+                    break;
+
+                case "061":
+                    Type = StationType.x7407p;
+                    break;
+
+                case "062":
+                    Type = StationType.x7410p;
+                    break;
+
+                case "069":
+                    Type = StationType.BriAdjunctLink;
+                    break;
+
+                case "077":
+                    Type = StationType.x602a1;
+                    break;
+
+                case "078":
+                    Type = StationType.x7434d;
+                    break;
+
+                case "07a":
+                    Type = StationType.x7410d;
+                    break;
+
+                case "084":
+                    Type = StationType.x8403b;
+                    break;
+
+                case "085":
+                    Type = StationType.x8410b;
+                    break;
+
+                case "086":
+                    Type = StationType.x8410d;
+                    break;
+
+                case "087":
+                    Type = StationType.x8434d;
+                    break;
+
+                case "08b":
+                    Type = StationType.x603a1;
+                    break;
+
+                case "08c":
+                    Type = StationType.x603d1;
+                    break;
+
+                case "08e":
+                    Type = StationType.Console;
+                    break;
+
+                case "08f":
+                    Type = StationType.x603e1;
+                    break;
+
+                case "090":
+                    Type = StationType.VRU;
+                    break;
+
+                case "094":
+                    Type = StationType.AnnMusic;
+                    break;
+
+                case "095":
+                    Type = StationType.WorldClassBri;
+                    break;
+
+                case "098":
+                    Type = StationType.Audix;
+                    break;
+
+                case "09d":
+                    Type = StationType.FDVRU;
+                    break;
+
+                case "09f":
+                    Type = StationType.x8411b;
+                    break;
+
+                case "0a0":
+                    Type = StationType.x8411d;
+                    break;
+
+                case "0a2":
+                    Type = StationType.x7434nd;
+                    break;
+
+                case "0a4":
+                    Type = StationType.x8405b;
+                    break;
+
+                case "0a5":
+                    Type = StationType.x8405bp;
+                    break;
+
+                case "0a6":
+                    Type = StationType.x8405;
+                    break;
+
+                case "0a7":
+                    Type = StationType.Dp8405;
+                    break;
+
+                case "0a9":
+                    Type = StationType.x606a1;
+                    break;
+
+                case "0ac":
+                    Type = StationType.x6402b;
+                    break;
+
+                case "0ad":
+                    Type = StationType.x6408b;
+                    break;
+
+                case "0ae":
+                    Type = StationType.Bp6408;
+                    break;
+
+                case "0af":
+                    Type = StationType.x6408d;
+                    break;
+
+                case "0b0":
+                    Type = StationType.Dp6408;
+                    break;
+
+                case "0b1":
+                    Type = StationType.Dp6416;
+                    break;
+
+                case "0b2":
+                    Type = StationType.Dp6424;
+                    break;
+
+                case "0b3":
+                    Type = StationType.Vmi;
+                    break;
+
+                case "0b7":
+                    Type = StationType.x6402d;
+                    break;
+
+                case "0b8":
+                    Type = StationType.AnalogAwoh;
+                    break;
+
+                case "0ca":
+                    Type = StationType.x9408;
+                    break;
+
+                case "0c4":
+                    Type = StationType.x603f1;
+                    break;
+
+                case "0c5":
+                    Type = StationType.x9601p;
+                    break;
+
+                case "0c6":
+                    Type = StationType.Xmobile;
+                    break;
+
+                case "0c7":
+                    Type = StationType.x6416cmv;
+                    break;
+
+                case "0c8":
+                    Type = StationType.GenericH323;
+                    break;
+
+                case "0c9":
+                    Type = StationType.x9404;
+                    break;
+
+                case "0cd":
+                    Type = StationType.x6210;
+                    break;
+
+                case "0ce":
+                    Type = StationType.x6218;
+                    break;
+
+                case "0cf":
+                    Type = StationType.x6221;
+                    break;
+
+                case "0d0":
+                    Type = StationType.CallrId;
+                    break;
+
+                case "0d1":
+                    Type = StationType.Cti;
+                    break;
+
+                case "0d3":
+                    Type = StationType.x4612;
+                    break;
+
+                case "0d4":
+                    Type = StationType.x4624;
+                    break;
+
+                case "0d5":
+                    Type = StationType.x4606;
+                    break;
+
+                case "0d6":
+                    Type = StationType.x4630;
+                    break;
+
+                case "0d7":
+                    Type = StationType.Adjunct;
+                    break;
+
+                case "0d8":
+                    Type = StationType.Adjunct;
+                    break;
+
+                case "0d9":
+                    Type = StationType.x2420;
+                    break;
+
+                case "0db":
+                    Type = StationType.x4620;
+                    break;
+
+                case "0dc":
+                    Type = StationType.SbsNoHardware;
+                    break;
+
+                case "0df":
+                    Type = StationType.x2402;
+                    break;
+
+                case "0e0":
+                    Type = StationType.x4610;
+                    break;
+
+                case "0e1":
+                    Type = StationType.x2410;
+                    break;
+
+                case "0e6":
+                    Type = StationType.x4622;
+                    break;
+
+                case "0e7":
+                    Type = StationType.x4601p;
+                    break;
+
+                case "0e8":
+                    Type = StationType.x4602p;
+                    break;
+
+                case "0e9":
+                    Type = StationType.x9610;
+                    break;
+
+                case "0ea":
+                    Type = StationType.x9620;
+                    break;
+
+                case "0eb":
+                    Type = StationType.x9630;
+                    break;
+
+                case "0ec":
+                    Type = StationType.x9650;
+                    break;
+
+                case "0ed":
+                    Type = StationType.x1603;
+                    break;
+
+                case "0ee":
+                    Type = StationType.x1608;
+                    break;
+
+                case "0ef":
+                    Type = StationType.x1616;
+                    break;
+
+                case "0f0":
+                    Type = StationType.x4620Sip;
+                    break;
+
+                case "0f3":
+                    Type = StationType.x9620Sip;
+                    break;
+
+                case "0f4":
+                    Type = StationType.x9630Sip;
+                    break;
+
+                case "0f5":
+                    Type = StationType.x9650Sip;
+                    break;
+
+                case "0f7":
+                    Type = StationType.x1408;
+                    break;
+
+                case "0f8":
+                    Type = StationType.x1416;
+                    break;
+
+                case "075":
+                    Type = StationType.OpsPrimary;
+                    break;
+
+                case "076":
+                    Type = StationType.Agent;
+                    break;
+
+                case "100":
+                    Type = StationType.x9608Sip;
+                    break;
+
+                case "101":
+                    Type = StationType.x9611Sip;
+                    break;
+
+                case "102":
+                    Type = StationType.x9621Sip;
+                    break;
+
+                case "103":
+                    Type = StationType.x9641Sip;
+                    break;
+
+                case "104":
+                    Type = StationType.x9608SipCc;
+                    break;
+
+                case "105":
+                    Type = StationType.x9611SipCc;
+                    break;
+
+                case "106":
+                    Type = StationType.x9621SipCc;
+                    break;
+
+                case "107":
+                    Type = StationType.x9641SipCc;
+                    break;
+
+                case "108":
+                    Type = StationType.x9608;
+                    break;
+
+                case "109":
+                    Type = StationType.x9611;
+                    break;
+
+                case "10a":
+                    Type = StationType.x9621;
+                    break;
+
+                case "10b":
+                    Type = StationType.x9641;
+                    break;
+
+                case "10e":
+                    Type = StationType.J179;
+                    break;
+
+                default:
+                    Type = StationType.Unknown;
+                    Database.AddMissingStationType(type, UID);
+                    break;
+            }
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_ST_CPS.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_ST_CPS
+ * 
+ * This class defines a PR_ST_CPS record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_ST_CPS {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string Port;           // The port for the record
+
+        // Constructor for creating the record
+        internal PR_ST_CPS(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[1];
+            Port = line1[2];
+        }
+
+        // Check for if this has an IP port
+        internal bool IsIPPort() {
+            return Port.Substring(0, 2) == "7f";
+        }
+
+        // Check all PR_ST_CPS records to ensure only one is using this port
+        private bool _hasDuplicates;
+        private bool _checkedDuplicates;
+        internal bool HasDuplicates() {
+            if (!_checkedDuplicates) {
+                var check = Database.PR_ST_CPSs.FindAll(a => a.Port == Port);
+                _hasDuplicates = check.Count > 1;
+                _checkedDuplicates = true;
+            }
+            return _hasDuplicates;
+        }
+
+        // Check for if this record has a PR_MOPORT with the same port
+        private bool _hasMOPORT;
+        private bool _checkedMOPORT;
+        internal bool HasMOPORT() {
+            if (!_checkedMOPORT) {
+                var check = Database.PR_MOPORTs.Find(a => a.Port == Port);
+                _hasMOPORT = check != null;
+                _checkedMOPORT = true;
+            }
+            return _hasMOPORT;
+        }
+
+        // Check for if this record has a PR_PORT_UID with the same UID
+        private bool _hasPORTUID;
+        private bool _checkedPORTUID;
+        internal bool HasPORTUID() {
+            if (!_checkedPORTUID) {
+                var check = Database.PR_PORT_UIDs.Find(a => a.Port == Port);
+                _hasPORTUID = check != null;
+                _checkedPORTUID = true;
+            }
+            return _hasPORTUID;
+        }
+
+        // Check for if this record has a PR_STN with the same UID
+        private bool _hasSTN;
+        private bool _checkedSTN;
+        internal bool HasSTN() {
+            if (!_checkedSTN) {
+                var check = Database.PR_STNs.Find(a => a.UID == UID);
+                _hasSTN = check != null;
+                _checkedSTN = true;
+            }
+            return _hasSTN;
+        }
+
+        // Check for if this record has a PR_UDATA with the same UID
+        private bool _hasUDATA;
+        private bool _checkedUDATA;
+        internal bool HasUDATA() {
+            if (!_checkedUDATA) {
+                var check = Database.PR_UDATAs.Find(a => a.UID == UID);
+                _hasUDATA = check != null;
+                _checkedUDATA = true;
+            }
+            return _hasUDATA;
+        }
+
+        // Check for PR_MOBD
+        private bool _hasMOBD;
+        private bool _checkedMOBD;
+        internal bool HasMOBD() {
+            if (!_checkedMOBD) {
+                var board = Port.Substring(0, 6) + "00";
+                var check = Database.PR_MOBDs.Find(a => a.Board == board);
+                _hasMOBD = check != null;
+                _checkedMOBD = true;
+            }
+            return _hasMOBD;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_TRUNK.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_TRUNK
+ * 
+ * This class defines a PR_TRUNK record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_TRUNK {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string TrunkGroup;     // The trunk group for the record
+        internal string Port;           // The port for this record
+
+        // Constructor for creating the record
+        internal PR_TRUNK(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[1];
+            TrunkGroup = line1[2];
+            Port = line1[3];
+        }
+
+        // Check for if there is a PR_TR_MBR record
+        private bool _hasTRMBR;
+        private bool _checkedTRMBR;
+        internal bool HasTRMBR() {
+            if (!_checkedTRMBR) {
+                var pr_tr_mbr = Database.PR_TR_MBRs.Find(a => a.UID == UID);
+                _hasTRMBR = pr_tr_mbr != null;
+                _checkedTRMBR = true;
+            }
+            return _hasTRMBR;
+        }
+
+        // Check for if this record has a PR_MOPORT with the same port
+        private bool _hasMOPORT;
+        private bool _checkedMOPORT;
+        internal bool HasMOPORT() {
+            if (!_checkedMOPORT) {
+                var check = Database.PR_MOPORTs.Find(a => a.Port == Port);
+                _hasMOPORT = check != null;
+                _checkedMOPORT = true;
+            }
+            return _hasMOPORT;
+        }
+
+        // Check for if this record has a PR_PORT_UID with the same UID
+        private bool _hasPORTUID;
+        private bool _checkedPORTUID;
+        internal bool HasPORTUID() {
+            if (!_checkedPORTUID) {
+                var check = Database.PR_PORT_UIDs.Find(a => a.UID == UID);
+                _hasPORTUID = check != null;
+                _checkedPORTUID = true;
+            }
+            return _hasPORTUID;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_TR_GRP.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_TR_GRP
+ * 
+ * This class defines a PR_TR_GRP record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_TR_GRP {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID of the group
+        internal string MeasBy;         // Value for the measured by field
+        internal bool Measured;         // Flag for if this is a measured group
+
+        // Constructor for creating the record
+        internal PR_TR_GRP(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+            var line6 = prec[5].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[1];
+                if (Globals.CM_RELEASE <= CMRelease.CM7_0) {
+                    MeasBy = line6[4].Substring(2, 2);
+                } else {
+                    MeasBy = line6[4].Substring(6, 2);
+                }
+
+            Measured = MeasBy != "00";
+        }
+
+        // Method for getting the measured by value for SAT
+        internal string MeasuredBy() {
+            switch (MeasBy) {
+                case "01":
+                    return "internal";
+
+                case "02":
+                    return "external";
+
+                case "03":
+                    return "both";
+                
+                default:
+                    return "none";
+            }
+        }
+
+        // Check for if there are any PR_ACD_TRUNK records
+        private bool _hasACDTRUNK;
+        private bool _checkedACDTRUNK;
+        internal bool HasACDTRUNK() {
+            if (!_checkedACDTRUNK) {
+                var pr_acd_trunks = Database.PR_ACD_TRUNKs.FindAll(a => a.TrunkGroupUID == UID);
+                _hasACDTRUNK = pr_acd_trunks.Count > 0;
+                _checkedACDTRUNK = true;
+            }
+            return _hasACDTRUNK;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_TR_MBR.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_TR_MBR
+ * 
+ * This class defines a PR_TR_MBR record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_TR_MBR {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string TrunkGroup;     // The trunk group for the record
+        internal string Port;           // The port for the record
+        internal bool Flagged;          // Flag for if we need to skip AUDIT-T06 for same trunk group
+
+        // Constructor for creating the record
+        internal PR_TR_MBR(string[] prec) {
+            // Store the raw PREC
+            PREC = prec;
+
+            // Split the lines
+            var line1 = prec[0].Split(' ');
+
+            // Parse out the basic values
+            UID = line1[2];
+            TrunkGroup = line1[1];
+            Port = line1[4];
+        }
+
+        // Check for if this record has a PR_TRUNK
+        private bool _hasTRUNK;
+        private bool _checkedTRUNK;
+        internal bool HasTRUNK() {
+            if (!_checkedTRUNK) {
+                var pr_trunk = Database.PR_TRUNKs.Find(a => a.UID == UID);
+                _hasTRUNK = pr_trunk != null;
+                _checkedTRUNK = true;
+            }
+            return _hasTRUNK;
+        }
+
+        // Check for if this record has a PR_ACD_TRUNK
+        private bool _hasACDTRUNK;
+        private bool _checkedACDTRUNK;
+        internal bool HasACDTRUNK() {
+            if (!_checkedACDTRUNK) {
+                var pr_acd_trunk = Database.PR_ACD_TRUNKs.Find(a => a.TrunkGroupUID == TrunkGroup &&
+                    a.TrunkMemberUID == UID);
+                _hasACDTRUNK = pr_acd_trunk != null;
+                _checkedACDTRUNK = true;
+            }
+            return _hasACDTRUNK;
+        }
+    }
+}
+
+
+====================================================================
+FILE: PRECs\PR_TTISET.cs
+====================================================================
+
+/*
+ * Auditor3 :: PR_TTISET
+ * 
+ * This class defines a PR_TTISET record.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class PR_TTISET {

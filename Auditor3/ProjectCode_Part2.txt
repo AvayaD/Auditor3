@@ -1,0 +1,3463 @@
+
+                ConnectToolsAMenu.IsEnabled = !Globals.TOOLSA.Connected();
+                DisconnectToolsAMenu.IsEnabled = Globals.TOOLSA.Connected();
+                DisconnectCMMenu.IsEnabled = Globals.CM.Connected();
+                ConnectDRCCDMenu.IsEnabled = !Globals.DRCCD.Connected();
+                DisconnectDRCCDMenu.IsEnabled = Globals.DRCCD.Connected();
+
+                if (!string.IsNullOrEmpty(OutputText))
+                {
+                    lock (OutputLock)
+                    {
+                        OutputBox.Text += OutputText;
+                        OutputText = "";
+                    }
+                    OutputLabel.Focus();
+                    OutputBox.ScrollToEnd();
+                }
+            }
+            Dispatcher.Invoke(update);
+
+            // Restart the refresh timer
+            _refreshTimer.Start();
+        }
+
+        // Event handler when the text in the LAB IP textbox changes
+        private void LabIPChanged(object sender, TextChangedEventArgs args)
+        {
+            if (Globals.STATE == State.IDLE && Globals.CM != null && Globals.CM.Connected())
+            {
+                var disconnect = new Task(Globals.CM.Disconnect);
+                disconnect.Start();
+            }
+        }
+
+        // WebASG test
+        private void Click_WebASGTest(object sender, RoutedEventArgs args)
+        {
+            Connections.WebASGConnection.GetResponse("Challenge: 10024-67323278              Product ID: 51bf031f13fc4fa0b5b3205952c2e82101");
+        }
+    }
+}
+
+
+====================================================================
+FILE: packages.config
+====================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<packages>
+  <package id="Microsoft.AspNet.WebApi.Client" version="5.2.7" targetFramework="net461" />
+  <package id="Newtonsoft.Json" version="6.0.4" targetFramework="net461" />
+  <package id="SSH.NET" version="2016.1.0" targetFramework="net461" />
+</packages>
+
+====================================================================
+FILE: PR_BARRY.cs
+====================================================================
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Auditor3 {
+    internal class PR_BARRY {
+        internal string[] PREC;         // The raw PREC data
+        internal string UID;            // The UID for the record
+        internal string GID = string.Empty;            // The GID for the record
+        internal string Digits = string.Empty;         // The digits for the extension
+
+        internal PR_BARRY(string[] prec) {
+            PREC = prec;
+            var split = prec[0].Split(' ');
+            UID = split[1];
+        }
+    }
+}
+
+
+====================================================================
+FILE: Connections\CMConnection.cs
+====================================================================
+
+/*
+ * Auditor3 :: CMConnection
+ * 
+ * This class defines the connection to the CM.
+ * 
+ * Auditor3 python version was developed by David McNutt - mcnuttd@avaya.com
+ * 
+ */
+
+using System;
+using System.Net.Sockets;
+using System.Text.RegularExpressions;
+using Renci.SshNet;
+using Renci.SshNet.Common;
+
+namespace Auditor3 {
+    internal class CMConnection : ConnectionBase {
+        private bool _labPassword;                          // Flag for if we are using a lab password or not
+        internal const string Username = "init";            // The username to use to login
+        internal const string LabPassword = "itsgrand3";    // The password if we are using a lab password
+        private bool _inOSSI;                               // Flag tracking if we are in OSSI
+        private bool _inTCM;                                // Flag tracking if we are in TCM
+
+        // Constructor for creating the connection
+        internal CMConnection() { _name = "CM"; }
+
+        // Method for connecting to CM
+        internal override bool Connect() {
+            if (Connected()) return true;
+
+            switch (Globals.MODE) {
+                case Mode.LIVE:
+                    return ConnectLive();
+
+                case Mode.LAB:
+                    return ConnectLab();
+
+                case Mode.OFFLINE:
+                default:
+                    return false;
+            }
+        }
+
+        // Method for connecting to a lab system
+        internal bool ConnectLab() {
+            if (!Globals.CHECK_IP(Globals.CONNECT_IP)) {
+                Globals.GUI.Error("** INVALID CONNECTION IP **");
+                return false;
+            }
+            return HandleConnect(Globals.CONNECT_IP, 22);
+        }
+
+        // Method for connecting to a live system
+        internal bool ConnectLive() {
+            if (!Globals.CHECK_PORT(Globals.CONNECT_PORT)) {
+                Globals.GUI.Error("** INVALID CONNECTION PORT **");
+                return false;
+            }
+
+            return HandleConnect("127.0.0.1", Convert.ToUInt16(Globals.CONNECT_PORT));
+        }
+
+        // This method is for opening an OSSI terminal on a shell
+        internal bool OpenOSSI(ShellStream shell) {
+            if (_inOSSI) return true;
+            if (shell == null) return false;
+            Globals.GUI.AddStatus("Opening OSSI");
+
+            // Run the dsat command
+            shell.WriteLine("dsat");
+
+            if (_labPassword) {
+                // If we are using a lab password, we can expect a password prompt
+                var first = shell.Expect("Password:", Globals.CLI_CMD_TIMEOUT);
+                if (string.IsNullOrEmpty(first)) {
+                    Globals.GUI.Error("** SAT LOGIN FAILED - ARE YOU CONNECTED TO THE STANDBY **");
+                    return false;
+                }
+                shell.WriteLine(LabPassword);
+            } else {
+                // If we are not using a lab password, we can expect an ASG challenge
+                var first = shell.Expect("Response:", Globals.CLI_CMD_TIMEOUT);
+                if (string.IsNullOrEmpty(first)) {
+                    Globals.GUI.Error("** SAT LOGIN FAILED - ARE YOU CONNECTED TO THE STANDBY **");
+                    return false;
+                }
+                shell.WriteLine(Connections.WebASGConnection.GetResponse(first));
+                //shell.WriteLine(Globals.TOOLSA.GetASG(first));
+            }
+
+            // Make sure we get the terminal type prompt next
+            var second = shell.Expect("SUNT)", Globals.CLI_CMD_TIMEOUT);
+            if (string.IsNullOrEmpty(second)) {
+                Globals.GUI.Error("** SAT LOGIN FAILED - DID NOT GET TERMINAL CHOICE RESPONSE **");
+                return false;
+            }
+
+            // Send ossi as our terminal type
+            shell.WriteLine("ossi");
+
+            // Make sure we get the OSSI prompt back
+            var third = shell.Expect("t", Globals.CLI_CMD_TIMEOUT);
+            if (string.IsNullOrEmpty(third)) {
+                Globals.GUI.Error("** SAT LOGIN FAILED - DID NOT GET OSSI PROMPT **");
+                return false;
+            }
+
+            _inOSSI = true;
+            return true;
+        }
+
+        // This method is for closing an OSSI connection
+        internal bool CloseOSSI(ShellStream shell) {
+            if (_inTCM) {
+                Globals.GUI.Error("ERROR: Cannot exit OSSI from TCM");
+                return false;
+            }
+            if (!_inOSSI) return true;
+            _inOSSI = false;
+            Globals.GUI.AddStatus("Closing OSSI");
+
+            shell.WriteLine("clogoff");
+            shell.WriteLine("t");
+            shell.WriteLine("y");
+            return true;
+        }
+
+        // This method is for opening a TCM connection on a shell that is already
+        // connected to OSSI
+        internal bool OpenTCM(ShellStream shell) {
+            if (_inTCM) return true;
+            if (!_inOSSI) {
+                Globals.GUI.Error("Cannot open TCM without opening OSSI first");
+                return false;
+            }
+            if (shell == null) return false;
+            Globals.GUI.AddStatus("Opening TCM");
+
+            shell.WriteLine("cgo tcm");
+            shell.WriteLine("t");
+
+            var tcm = shell.Expect(new Regex("tcm[0-9]+>|Debugger currently being used, please try later"), Globals.SAT_CMD_TIMEOUT);
+            if (string.IsNullOrEmpty(tcm)) {
+                Globals.GUI.Error("** TCM LOGIN FAILED **");
+                return false;
+            } else if (tcm.Contains("Debugger currently being used, please try later")) {
+                Globals.GUI.Error("** TCM ALREADY IN USE **");
+                return false;
+            }
+
+            tcm = RunTCMCommand(shell, "set prec long");
+            if (tcm == null) return false;
+
+            tcm = RunTCMCommand(shell, $"set op {Globals.TCM_PAGINATION}");
+            if (tcm == null) return false;
+
+            _inTCM = true;
+            return true;
+        }
+
+        // Method for closing TCM
+        public bool CloseTCM(ShellStream shell) {
+            if (!_inTCM) return true;
+            Globals.GUI.AddStatus("Closing TCM");
+
+            shell.WriteLine("quit");
+
+            var exittcm = shell.Expect(new Regex("t", RegexOptions.Multiline), Globals.TCM_CMD_TIMEOUT);
+            if (string.IsNullOrEmpty(exittcm)) {
+                Globals.GUI.Error("TCM quit failed", null);
+                return false;
+            }
+
+            _inTCM = false;
+            return true;
+        }
+
+        // This method is for running a TCM command
+        internal string RunTCMCommand(ShellStream shell, string command) {
+            shell.WriteLine(command);
+            var tcm = shell.Expect(new Regex("tcm[0-9]+>|<CR> to continue, q<CR> to quit"), Globals.TCM_CMD_TIMEOUT);
+            if (string.IsNullOrEmpty(tcm)) {
+                Globals.GUI.Error("TCM COMMAND FAILED");
+                return null;
+            }
+
+            // Flush the buffer when this is the Collector running
+            if (Globals.PROCESS == Process.COLLECT) {
+                var flush = "start";
+
+                while (!string.IsNullOrEmpty(flush)) {
+                    flush = shell.Expect(new Regex("tcm[0-9]+>"), new TimeSpan(0, 0, 1));
+                }
+            }
+
+            if (tcm.Contains("<CR> to continue, q<CR> to quit")) return tcm + RunTCMCommand(shell, "");
+            else return tcm;
+        }
+
+        // Method for running a SAT command on a shell
+        internal string RunSATCommand(ShellStream shell, string command) {
+            shell.WriteLine("c" + command);
+            shell.WriteLine("t");
+
+            var sat = shell.Expect(new Regex("t$"), Globals.SAT_CMD_TIMEOUT);
+            if (string.IsNullOrEmpty(sat)) {
+                Globals.GUI.Error("SAT command failed", null);
+                return null;
+            }
+
+            return sat;
+        }
+
+        // Method for copying a file
+        internal void CopyFile(string source, string target) {
+            if (!Connected()) Connect();
+            if (!Connected()) return;
+            _ssh.RunCommand($"/bin/cp {source} {target}");
+        }
+
+        // Method for gzipping a file
+        internal void GZipFile(string filename) {
+            if (!Connected()) Connect();
+            if (!Connected()) return;
+            _ssh.RunCommand($"/bin/gzip {filename}");
+        }
+        
+        // Method for gunzipping a file
+        internal void GUnZipFile(string filename) {
+            if (!Connected()) Connect();
+            if (!Connected()) return;
+            _ssh.RunCommand($"/bin/gunzip -f {filename}");
+        }
+
+        // Method for extracting a compressed tar file
+        internal void ExtractCompressedTAR(string filename, string destination) {
+            if (!Connected()) Connect();
+            if (!Connected()) return;
+            _ssh.RunCommand($"/bin/tar xvfz {filename} -C {destination}");
+        }
+
+        // Method for creating a directory
+        internal void CreateDirectory(string directory) {
+            if (!Connected()) Connect();
+            if (!Connected()) return;
+            _ssh.RunCommand($"/bin/mkdir {directory}");
+        }
+
+        // Method for getting the swversion
+        internal string Swversion() {
+            if (!Connected()) Connect();
+            if (!Connected()) return "";
+            return _ssh.RunCommand($"/opt/ecs/bin/swversion").Result;
+        }
+
+        // Method for using wget to retrieve a file
+        internal void Wget(string url, string target) {
+            if (!Connected()) Connect();
+            if (!Connected()) return;
+            url = url.Replace("info.dr.avaya.com", "135.9.1.4");
+            _ssh.RunCommand($"/usr/bin/wget {url} {target}");
+        }
+
+        // Method for getting the statapp
+        internal string Statapp() {
+            if (!Connected()) Connect();
+            if (!Connected()) return "";
+            return _ssh.RunCommand("/opt/ecs/bin/statapp").Result;
+        }
+
+        // Method for actually connecting to a site
+        protected bool HandleConnect(string ip, ushort port) {
+            Globals.GUI.AddStatus($"Connecting to {_name} {ip}:{port}");
+            try {
+                var connect = new KeyboardInteractiveConnectionInfo(ip, port, Username);
+                connect.AuthenticationPrompt += HandleAuthenticate;
+
+                _ssh = new SshClient(connect);
+                _ssh.ErrorOccurred += ClientError;
+
+                _ssh.Connect();
+
+                _sftp = new SftpClient(connect) { OperationTimeout = Globals.SFTP_TIMEOUT };
+                _sftp.ErrorOccurred += ClientError;
+                
+                _sftp.Connect();
+
+                return true;
+            } catch (SocketException) {
+                Globals.GUI.Error("** COULD NOT CONNECT TO CM - IS RAUI CONNECTION OPEN **");
+                return false;
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured while connecting to CM", error);
+                return false;
+            }
+        }
+
+        // Method for handling CM authentication
+        private void HandleAuthenticate(object sender, AuthenticationPromptEventArgs args) {
+            var asg = "";
+            foreach (var prompt in args.Prompts) {
+                if (prompt.Request.Contains("Challenge:")) {
+                    asg = Connections.WebASGConnection.GetResponse(prompt.Request);
+                    //asg = Globals.TOOLSA.GetASG(prompt.Request);
+                    _labPassword = false;
+                } 
+                else if (prompt.Request.Contains("Password:")) {
+                    asg = LabPassword;
+                    _labPassword = true;
+                }
+                prompt.Response = asg;
+            }
+        }
+    }
+}
+
+
+====================================================================
+FILE: Connections\ConnectionBase.cs
+====================================================================
+
+/*
+ * Auditor3 :: ConnectionBase
+ * 
+ * This abstract class defines the underlying processes for creating and managing
+ * a SSH/SFTP connection to another machine.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.IO;
+using Renci.SshNet;
+using Renci.SshNet.Common;
+
+namespace Auditor3 {
+    internal abstract class ConnectionBase {
+        protected string _name = "NONE";            // The name of the connection
+        protected SshClient _ssh;                   // The SSH connection
+        protected SftpClient _sftp;                 // The SFTP connection
+
+        internal abstract bool Connect();           // Abstract definition for connecting
+
+        // This method returns the connected state
+        internal bool Connected() { return _ssh != null && _ssh.IsConnected; }
+
+        // This method returns the SSH client
+        internal SshClient SSH() { return _ssh; }
+
+        // This method returns the SFTP client
+        internal SftpClient SFTP() { return _sftp; }
+
+        // This method is for disconnecting the connection
+        internal void Disconnect() {
+            Globals.GUI.AddStatus($"Disconnecting from {_name}");
+            if (_ssh != null) {
+                if (_ssh.IsConnected) {
+                    _ssh.Disconnect();
+                    _ssh.Dispose();
+                }
+            }
+
+            if (_sftp != null) {
+                if (_sftp.IsConnected) {
+                    _sftp.Disconnect();
+                    _sftp.Dispose();
+                }
+            }
+
+            _ssh = null;
+            _sftp = null;
+        }
+
+        // This method is used to get a shell for the connection
+        internal ShellStream Shell() {
+            Globals.GUI.AddStatus($"Opening shell to {_name}");
+
+            if (!Connected()) return null;
+
+            var shell = _ssh.CreateShellStream("Tail", 80, 24, 800, 600, 1024);
+            if (shell == null) {
+                Globals.GUI.Error($"Failed to obtain shell to {_name}");
+                return null;
+            }
+
+            // Flush two lines
+            shell.WriteLine("");
+            shell.WriteLine("");
+
+            // Clear out the initial lines in the shell
+            var line = "start";
+            while (line != null) line = shell.ReadLine(new TimeSpan(0, 0, 1));
+
+            return shell;
+        }
+        
+        // Method for uploading a file
+        internal bool SendFile(string filename, string target) {
+
+            if (!File.Exists(filename)) { return false; }
+
+            try {
+                using (var file = new FileStream(filename, FileMode.Open)) {
+                    _sftp.BufferSize = 4 * 1024;
+                    _sftp.UploadFile(file, target, true, null);
+                }
+                return true;
+            } catch (Exception) {
+                return false;
+            }
+        }
+
+        // Method for downloading a file
+        internal bool RecieveFile(string filename, string target) {
+            try {
+                using (var file = new FileStream(target, FileMode.Create)) {
+                    _sftp.BufferSize = 4 * 1024;
+                    _sftp.DownloadFile(filename, file, null);
+                }
+                return true;
+            } catch (Exception) {
+                return false;
+            }
+        }        
+
+        // Method for handling client errors
+        protected void ClientError(object sender, ExceptionEventArgs args) {
+            Globals.GUI.Error($"Exception occured on connection {_name}", args.Exception);
+        }
+    }
+}
+
+
+====================================================================
+FILE: Connections\DRCCDConnection.cs
+====================================================================
+
+/*
+ * Auditor3 :: DRCCDConnection
+ * 
+ * This abstract class defines the connection to the DRCCD server.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Net.Sockets;
+using Renci.SshNet;
+using Renci.SshNet.Common;
+
+namespace Auditor3 {
+    internal class DRCCDConnection : ConnectionBase {
+
+        // Constructor for creating the connection
+        internal DRCCDConnection() { _name = "DRCCD"; }
+
+        // Method for connecting to ToolsA
+        internal override bool Connect() {
+            if (Connected()) return true;
+
+            if (string.IsNullOrEmpty(Globals.USER_DATA.DRCCDUsername) ||
+                string.IsNullOrEmpty(Globals.USER_DATA.DRCCDPassword)) {
+                Globals.GUI.Error("** YOU MUST PROVIDE DRCCD USERNAME AND PASSWORD **");
+                return false;
+            }
+
+            Globals.GUI.AddStatus($"Connecting to DRCCD");
+
+            try {
+                _ssh = new SshClient("drccd.dr.avaya.com", Globals.USER_DATA.DRCCDUsername, Globals.USER_DATA.DRCCDPassword);
+                _ssh.ConnectionInfo.Timeout = TimeSpan.FromSeconds(10);
+                _ssh.ErrorOccurred += ClientError;
+                _ssh.Connect();
+
+                _sftp = new SftpClient("drccd.dr.avaya.com", Globals.USER_DATA.DRCCDUsername,
+                    Globals.USER_DATA.DRCCDPassword) { OperationTimeout = Globals.SFTP_TIMEOUT };
+                _sftp.ErrorOccurred += ClientError;
+                _sftp.Connect();
+
+                return true;
+            } catch (SshAuthenticationException) {
+                Globals.GUI.Error("Authentication error on DRCCD");
+                return false;
+            } catch (SocketException) {
+                Globals.GUI.Error($"Could not connect to DRCCD");
+                return false;
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occurred while connecting to DRCCD", error);
+                return false;
+            }
+        }
+
+        // Method for running David McNutt's jirasearchd script
+        internal string JiraSearchd(string search, bool stringsearch) {
+            if (!Connected()) Connect();
+            if (!Connected()) return "NOT CONNECTED";
+            var cmd = "/home/mcnuttd/jirasearchd ";
+            if (stringsearch) cmd += "-ss ";
+            cmd += search;
+            return _ssh.RunCommand(cmd).Result;
+        }
+
+        // Method for running David McNutt's findjira script
+        internal string FindJira(string jira, string context) {
+            if (!Connected()) Connect();
+            if (!Connected()) return "NOT CONNECTED";
+            var shell = Shell();
+            shell.WriteLine($". /usr/add-on/definity/bin/pjenvir {context}");
+            shell.WriteLine($"/home/mcnuttd/findjira {jira}");
+            var output = "";
+            var line = "start";
+            while (line != null) {
+                line = shell.ReadLine(new TimeSpan(0, 0, 5));
+                output += line + Environment.NewLine;
+            }
+            return output;
+        }
+    }
+}
+
+
+====================================================================
+FILE: Connections\LabStagerConnection.cs
+====================================================================
+
+/*
+ * Auditor3 :: LabStagerConnection
+ * 
+ * This class defines the connection to the lab CM to be staged.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3 {
+    internal class LabStagerConnection : CMConnection {
+
+        // Constructor for creating the connection
+        internal LabStagerConnection() { _name = "LAB"; }
+
+        // Method for connecting to CM
+        internal bool Connect(string ip) {
+            if (Connected()) return true;
+            return HandleConnect(ip, 22);
+        }
+    }
+}
+
+
+====================================================================
+FILE: Connections\ToolsAConnection.cs
+====================================================================
+
+/*
+ * Auditor3 :: ToolsAConnection
+ * 
+ * This abstract class defines the connection to the ToolsA server.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net.Sockets;
+using System.Text.RegularExpressions;
+using Renci.SshNet;
+using Renci.SshNet.Common;
+
+namespace Auditor3 {
+    internal class ToolsAConnection : ConnectionBase {
+
+        // Prefixes for determining if you are on an old or new ToolsA server
+        private const string TOOLSA_OLD_SERVER_PREFIX = "st3tds";
+        private const string TOOLSA_NEW_SERVER_PREFIX = "pltlavmap";
+
+        // Flag tracking if we are connected to the new or old ToolsA
+        internal bool CONNECTED_NEW;
+
+        // Commands that need to be flexible
+        internal static string GETASG = "";
+        internal static string CAT = "";
+
+        // Pairs of commands that are different on old versus new ToolsA servers
+        internal const string GETASG_OLD = "/homea/bsh/bin/getasg";
+        internal const string GETASG_NEW = "/app/inadsb/prog/getasg";
+
+        internal const string CAT_OLD = "/usr/bin/cat";
+        internal const string CAT_NEW = "/bin/cat";
+
+        internal const string UPDATE_FILE_TOOLSA_OLD = "/home1/harrisb/auditor/updates/update_info.xml";
+        internal const string UPDATE_FILE_TOOLSA_NEW = "/home/harrisb/auditor/updates/update_info.xml";
+
+        internal const string CM_LABS_FILE_OLD = "/home1/harrisb/auditor/labs/cmlabs.xml";
+        internal const string CM_LABS_FILE_NEW = "/home/harrisb/auditor/labs/cmlabs.xml";
+
+        internal const string MG_LABS_FILE_OLD = "/home1/harrisb/auditor/labs/mglabs.xml";
+        internal const string MG_LABS_FILE_NEW = "/home/harrisb/auditor/labs/mglabs.xml";
+
+        internal const string CM_PATCHES_FILE_OLD = "/home1/harrisb/auditor/labs/cmpatches.xml";
+        internal const string CM_PATCHES_FILE_NEW = "/home/harrisb/auditor/labs/cmpatches.xml";
+
+        internal const string CRASH_FOLDER_TOOLSA_OLD = "/home1/harrisb/auditor/crash_reports/";
+        internal const string CRASH_FOLDER_TOOLSA_NEW = "/home/harrisb/auditor/crash_reports/";
+
+        // Constructor for creating the connection
+        internal ToolsAConnection() { _name = "TOOLSA"; }        
+
+        // Method for connecting to ToolsA
+        internal override bool Connect() {
+            return Connect(Globals.USER_DATA.ToolsAServer);
+        }
+        
+        // Method for connecting to ToolsA
+        internal bool Connect(string server) {
+            if (Connected()) return true;
+
+            if (string.IsNullOrEmpty(Globals.USER_DATA.ToolsAUsername) ||
+                string.IsNullOrEmpty(Globals.USER_DATA.ToolsAPassword)) {
+                Globals.GUI.Error("** YOU MUST PROVIDE TOOLSA USERNAME AND PASSWORD **");
+                return false;
+            }
+
+            Globals.GUI.AddStatus($"Connecting to ToolsA: {server}");
+
+            try {
+                _ssh = new SshClient(server, Globals.USER_DATA.ToolsAUsername, Globals.USER_DATA.ToolsAPassword);
+                _ssh.ErrorOccurred += ClientError;
+                _ssh.Connect();
+
+                _sftp = new SftpClient(server, Globals.USER_DATA.ToolsAUsername, 
+                    Globals.USER_DATA.ToolsAPassword) { OperationTimeout = Globals.SFTP_TIMEOUT };
+                _sftp.ErrorOccurred += ClientError;
+                _sftp.Connect();
+
+                SetToolsAPaths();
+
+                return true;
+            } catch (SshAuthenticationException) {
+                Globals.GUI.Error("Authentication error on ToolsA");
+                return false;
+            } catch (SocketException) {
+                Globals.GUI.Error($"Could not connect to ToolsA server {Globals.USER_DATA.ToolsAServer}");
+                return false;
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occurred while connecting to ToolsA", error);
+                return false;
+            }
+        }
+
+
+        // Method for setting the ToolsA paths based on if connected to a new (Linux) or old
+        // (UNIX) ToolsA server
+        private void SetToolsAPaths() {
+            if (Globals.USER_DATA.ToolsAServer.Contains(TOOLSA_NEW_SERVER_PREFIX)) {
+                GETASG = GETASG_NEW;
+                CAT = CAT_NEW;
+                Globals.UPDATE_FILE_TOOLSA = UPDATE_FILE_TOOLSA_NEW;
+                Globals.CM_LABS_FILE = CM_LABS_FILE_NEW;
+                Globals.MG_LABS_FILE = MG_LABS_FILE_NEW;
+                Globals.CM_PATCHES_FILE = CM_PATCHES_FILE_NEW;
+                Globals.CRASH_FOLDER_TOOLSA = CRASH_FOLDER_TOOLSA_NEW;
+                CONNECTED_NEW = true;
+            } else {
+                GETASG = GETASG_OLD;
+                CAT = CAT_OLD;
+                Globals.UPDATE_FILE_TOOLSA = UPDATE_FILE_TOOLSA_OLD;
+                Globals.CM_LABS_FILE = CM_LABS_FILE_OLD;
+                Globals.MG_LABS_FILE = MG_LABS_FILE_OLD;
+                Globals.CM_PATCHES_FILE = CM_PATCHES_FILE_OLD;
+                Globals.CRASH_FOLDER_TOOLSA = CRASH_FOLDER_TOOLSA_OLD;
+                CONNECTED_NEW = false;
+            }
+        }
+
+        // Method for getting an ASG reponse
+        //internal string GetASG(string details) {
+        //    return GetASG(details, "init");
+        //}
+
+        // Method for getting an ASG reponse
+        //internal string GetASG(string details, string username) {
+        //    if (!Connected())
+        //        if (!Connect()) return "";
+        //
+        //    var challenge = Regex.Match(details, @"(Challenge: )([-0-9]+)").Groups[2].Value;
+        //    var product = Regex.Match(details, @"(Product ID: )([0-9a-zA-Z]+)").Groups[2].Value;
+        //    var cmd = _ssh.RunCommand($"{GETASG} {product} {username} {challenge}");
+        //    return Regex.Match(cmd.Result, "(response = )([-0-9a-zA-Z]+)").Groups[2].Value;
+        //}
+
+        // Method for reading a file
+        internal string Cat(string filename) {
+            if (!Connected())
+                if (!Connect()) return "";
+
+            var cmd = _ssh.RunCommand($"{CAT} {filename}");
+            return cmd.Result;
+        }
+
+        // Method for checking for updates
+        internal void CheckUpdates() {
+            if (!Connected())
+                if (!Connect()) return;
+
+            Globals.GUI.AddStatus("Checking for updates");
+
+            UpdateInfo info = null;
+
+            if (File.Exists(Globals.UPDATE_FILE)) File.Delete(Globals.UPDATE_FILE);
+            if (File.Exists(Globals.UPDATE_PACKAGE)) File.Delete(Globals.UPDATE_PACKAGE);
+
+            try {
+                RecieveFile(Globals.UPDATE_FILE_TOOLSA, Globals.UPDATE_FILE);
+
+                if (File.Exists(Globals.UPDATE_FILE)) {
+                    var file = new StreamReader(Globals.UPDATE_FILE);
+                    var xml = file.ReadToEnd();
+                    file.Close();
+                    info = Globals.DESERIALIZE<UpdateInfo>(xml);
+                }
+
+                if (info == null) return;
+                if (info.BUILD_NUMBER <= Globals.BUILD_NUMBER) return;
+
+                Globals.GUI.AddStatus($"Updating Corruption Auditor to {info.VERSION_MAJOR}.{info.VERSION_MINOR}");
+                Globals.GUI.AddStatus("Downloading update package");
+
+                using (var file = new FileStream(Globals.UPDATE_PACKAGE, FileMode.Create)) {
+                    _sftp.BufferSize = 4 * 1024;
+                    _sftp.DownloadFile(info.FILE_NAME, file);
+                }
+
+                Disconnect();
+
+                Globals.GUI.AddStatus("Launching updater");
+
+                System.Diagnostics.Process.Start(Globals.UPDATER);
+                Environment.Exit(0);
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured retrieving update file from ToolsA", error);
+            }
+        }
+
+        // Method for retrieving the lab info
+        internal void RetrieveLabInfo() {
+            if (!Connected())
+                if (!Connect()) return;
+
+            Globals.GUI.AddStatus("Retrieving lab info");
+
+            var cmlabs = Cat(Globals.CM_LABS_FILE);
+            var mglabs = Cat(Globals.MG_LABS_FILE);
+            var cmpatches = Cat(Globals.CM_PATCHES_FILE);
+
+            if (!string.IsNullOrEmpty(cmlabs))
+                Globals.CM_LABS = Globals.DESERIALIZE<List<LabInfo>>(cmlabs);
+            if (!string.IsNullOrEmpty(mglabs))
+                Globals.MG_LABS = Globals.DESERIALIZE<List<LabInfo>>(mglabs);
+            if (!string.IsNullOrEmpty(cmpatches))
+                Globals.CM_PATCHES = Globals.DESERIALIZE<List<PatchInfo>>(cmpatches);
+
+            Globals.LABS_LOADED = true;
+        }
+    }
+}
+
+
+====================================================================
+FILE: Connections\WebASGConnection.cs
+====================================================================
+
+/*
+ * Auditor3 :: Connections :: WebASGConnection
+ * 
+ * This class defines the web client connection to the ASG REST API.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.RegularExpressions;
+
+using static Auditor3.Locations.Locations;
+
+namespace Auditor3.Connections {
+    internal static class WebASGConnection {
+        private const string BASE_CORP = "https://c3ha.avaya.com/conninfo/rest/asg/CorruptionAudit";
+        private const string BASE_VDI = "https://c3ha.PCI.avaya.com/conninfo/rest/asg/CorruptionAudit";
+
+        // Method for getting an ASG response
+        internal static string GetResponse(string details, string username = "init") {
+            try {
+                var challenge = Regex.Match(details, @"(Challenge: )([-0-9]+)").Groups[2].Value;
+                var product = Regex.Match(details, @"(Product ID: )([0-9a-zA-Z]+)").Groups[2].Value;
+
+                var url = $"{CURRENT().WebASGURL}/{product}/{username}/{challenge}/0";
+                var credsArray = Encoding.ASCII.GetBytes("CorruptionAudit:Avaya123");
+
+                var client = new HttpClient();
+                client.BaseAddress = new Uri(url);
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(credsArray));
+
+                var response = client.GetAsync("").Result;
+                var asg = "";
+
+                if (response.IsSuccessStatusCode) {
+                    asg = response.Content.ReadAsStringAsync().Result;
+                } 
+                else {
+                    Globals.GUI.AddStatus($"WEBASG FAILED - Code: {(int)response.StatusCode}  Reason: {response.ReasonPhrase}");
+                }
+
+                client.Dispose();
+                return asg;
+            } catch (Exception error) {
+                Globals.GUI.Error("WebASG exception", error);
+                return "";
+            }
+        }
+    }
+}
+
+
+====================================================================
+FILE: Locations\Location.cs
+====================================================================
+
+/*
+ * Auditor3 :: Location
+ * 
+ * This class defines the parameters of a 'location', which is actually just an Avaya
+ * environment, but do not want to conflict with default Envronment class.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3.Locations {
+    internal class Location {
+        internal LocationID ID;
+        internal string Description;
+        internal string[] AvailableToolsAServers;
+        internal string[] AvailableDRCCDServers;
+        internal string WebASGURL;
+
+        internal bool HasToolsA() { return AvailableToolsAServers?.Length > 0; }
+        internal bool HasDRCCD() { return AvailableDRCCDServers?.Length > 0; }
+
+        internal Location(LocationID id, string description, string webasgurl, string[] toolsa = null, 
+            string[] drccd = null) {
+            ID = id;
+            Description = description;
+            WebASGURL = webasgurl;
+            AvailableToolsAServers = toolsa;
+            AvailableDRCCDServers = drccd;
+        }
+    }
+}
+
+
+====================================================================
+FILE: Locations\LocationID.cs
+====================================================================
+
+/*
+ * Auditor3 :: LocationID
+ * 
+ * This enum defines the locations ID.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+namespace Auditor3.Locations {
+    public enum LocationID {
+        CORPORATE,
+        AWS,
+        HIPAA,
+        PCI_DAY_2,
+        PCI_LAB
+    }
+}
+
+
+====================================================================
+FILE: Locations\Locations.cs
+====================================================================
+
+/*
+ * Auditor3 :: Locations
+ * 
+ * This class defines the available locations.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Auditor3.Locations {
+    internal static class Locations {
+        internal static List<Location> AVAILABLE;
+
+        internal static void INITIALIZE() {
+            AVAILABLE = new List<Location> { CORPORTE, AWS, HIPPA, PCI_DAY_2, PCI_LAB };
+        }
+
+        internal static Location CURRENT() { return AVAILABLE.FirstOrDefault(a => a.ID == Globals.USER_DATA.Location); }
+        internal static Location LOCATION(LocationID id) { return AVAILABLE.FirstOrDefault(a => a.ID == id); }
+
+        internal static Location CORPORTE = new Location(LocationID.CORPORATE, "Avaya Corporate Network", "https://c3ha.avaya.com/conninfo/rest/asg/CorruptionAudit", 
+            new string[] { "st3tds04.us1.avaya.com", "st3tds05.us1.avaya.com" },
+            new string[] { "drccd.dr.avaya.com" });
+
+        internal static Location AWS = new Location(LocationID.AWS, "AWS Cloud", 
+            "https://c3ha.avaya.com/conninfo/rest/asg/CorruptionAudit");
+
+        internal static Location HIPPA = new Location(LocationID.HIPAA, "HIPPA Day 2 & Lab", 
+            "https://c3ha.PCI.avaya.com/conninfo/rest/asg/CorruptionAudit");
+
+        internal static Location PCI_DAY_2 = new Location(LocationID.PCI_DAY_2, "PCI Day 2", 
+            "https://c3ha.PCI.avaya.com/conninfo/rest/asg/CorruptionAudit");
+
+        internal static Location PCI_LAB = new Location(LocationID.PCI_LAB, "PCI Lab",
+            "https://c3ha.PCI.avaya.com/conninfo/rest/asg/CorruptionAudit");
+    }
+}
+
+
+====================================================================
+FILE: Models\AuditCategory.cs
+====================================================================
+
+namespace Auditor3.Models
+{
+    public enum AuditCategory
+    {
+        Station = 0,
+        Announcement = 1,
+        Trunk = 2
+    }
+}
+
+====================================================================
+FILE: Models\AuditResult.cs
+====================================================================
+
+using System;
+
+namespace Auditor3.Models
+{
+    public class AuditResult
+    {
+        public string Code { get; set; }
+        public string Message { get; set; }
+        public bool Passed { get; set; }
+        public string FixScript { get; set; }
+        public AuditCategory Category { get; set; }
+        public bool RequiresManualFix { get; set; }
+        public DateTime AuditDateTime { get; set; } = DateTime.Now;
+
+        public AuditResult(
+            string code,
+            AuditCategory category,
+            bool passed = true,
+            string message = "",
+            string fixScript = "",
+            bool requiresManualFix = false)
+        {
+            Code = code;
+            Category = category;
+            Passed = passed;
+            Message = message;
+            FixScript = fixScript;
+            RequiresManualFix = requiresManualFix;
+        }
+
+        public override string ToString()
+        {
+            var status = Passed ? "Passed" : "Failed";
+            var manual = RequiresManualFix ? " (Manual Fix)" : "";
+            return $"{Code} [{Category}] - {status}{manual}";
+        }
+    }
+}
+
+====================================================================
+FILE: Models\AuditStatistics.cs
+====================================================================
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace Auditor3.Models
+{
+    public class AuditStatistics
+    {
+        public int TotalCorrupted { get; private set; }
+        public int CorruptedStations { get; private set; }
+        public int CorruptedTrunks { get; private set; }
+        public int CorruptedAnnouncements { get; private set; }
+        public int ManualFixes { get; private set; }
+        public int TotalChecked { get; private set; }
+        public int TotalToCheck { get; private set; }
+
+        private readonly Dictionary<string, int> _auditHits = new Dictionary<string, int>();
+        public List<AuditResult> Results { get; } = new List<AuditResult>();
+
+        public void RecordFailure(
+            string auditCode,
+            AuditCategory category,
+            bool requiresManualFix = false)
+        {
+            TotalCorrupted++;
+
+            switch (category)
+            {
+                case AuditCategory.Station:
+                    CorruptedStations++;
+                    break;
+                case AuditCategory.Trunk:
+                    CorruptedTrunks++;
+                    break;
+                case AuditCategory.Announcement:
+                    CorruptedAnnouncements++;
+                    break;
+            }
+
+            if (requiresManualFix)
+                ManualFixes++;
+
+            if (!_auditHits.ContainsKey(auditCode))
+                _auditHits[auditCode] = 0;
+            _auditHits[auditCode]++;
+        }
+
+        public void AddResult(AuditResult result)
+        {
+            if (result == null) return;
+            Results.Add(result);
+            if (!result.Passed)
+            {
+                RecordFailure(result.Code, result.Category, result.RequiresManualFix);
+            }
+        }
+
+        public int GetAuditHitCount(string auditCode)
+        {
+            return _auditHits.ContainsKey(auditCode) ? _auditHits[auditCode] : 0;
+        }
+
+        public IReadOnlyDictionary<string, int> GetAllAuditHits()
+        {
+            return _auditHits;
+        }
+
+        public void Reset()
+        {
+            TotalCorrupted = 0;
+            CorruptedStations = 0;
+            CorruptedTrunks = 0;
+            CorruptedAnnouncements = 0;
+            ManualFixes = 0;
+            TotalChecked = 0;
+            TotalToCheck = 0;
+            _auditHits.Clear();
+            Results.Clear();
+        }
+
+        public string GenerateReport()
+        {
+            var report = new StringBuilder();
+            report.AppendLine("=== AUDIT STATISTICS REPORT ===");
+            report.AppendLine();
+            report.AppendLine($"CORRUPTED               : {TotalCorrupted}");
+            report.AppendLine($"CORRUPTED STATIONS      : {CorruptedStations}");
+            report.AppendLine($"CORRUPTED TRUNKS        : {CorruptedTrunks}");
+            report.AppendLine($"CORRUPTED ANNOUNCEMENTS : {CorruptedAnnouncements}");
+            report.AppendLine($"MANUAL FIXES            : {ManualFixes}");
+            report.AppendLine();
+            report.AppendLine("=== INDIVIDUAL AUDIT HITS ===");
+            report.AppendLine();
+
+            foreach (var kvp in _auditHits.OrderBy(x => x.Key))
+            {
+                if (kvp.Value > 0)
+                    report.AppendLine($"{kvp.Key} : {kvp.Value}");
+            }
+
+            report.AppendLine();
+            report.AppendLine($"RECORDS CHECKED : {TotalChecked}/{TotalToCheck}");
+            return report.ToString();
+        }
+
+        public override string ToString()
+        {
+            return $"Corrupted: {TotalCorrupted} | Stations: {CorruptedStations} | Trunks: {CorruptedTrunks} | Announcements: {CorruptedAnnouncements} | Manual: {ManualFixes}";
+        }
+    }
+}
+
+====================================================================
+FILE: Modules\Auditor.cs
+====================================================================
+
+/*
+ * Auditor3 :: Auditor
+ * 
+ * This class defines the primary auditor process that runs the audits against the database to
+ * check for corruption issues.
+ * 
+ * REFACTORED: Uses strategy pattern via AuditStrategies accessor while maintaining original audit flow
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using Auditor3.Models;
+using Auditor3.Services;
+using System;
+using System.IO;
+using System.Text;
+
+namespace Auditor3
+{
+    internal static class Auditor
+    {
+
+        // This method is used to start the auditor
+        internal static void Start()
+        {
+            // Set the state/process, set the start time, and add a status message
+            Globals.STATE = State.RUNNING;
+            Globals.PROCESS = Process.AUDIT;
+            Globals.START_TIME = DateTime.Now;
+            Globals.GUI.AddStatus("Corruption audit is starting");
+
+            // Add the header to the report
+            Globals.GUI.AddOutput($"Corruption Audit v{Globals.VERSION()}");
+            Globals.GUI.AddOutput("");
+            Globals.GUI.AddOutput($"CM_RELEASE    : {Globals.CM_RELEASE}");
+            Globals.GUI.AddOutput($"STATIONS      : {Globals.STATION_AUDITS}");
+            Globals.GUI.AddOutput($"TRUNKS        : {Globals.TRUNK_AUDITS}");
+            Globals.GUI.AddOutput($"ANNOUNCEMENTS : {Globals.ANNOUNCEMENT_AUDITS}");
+            Globals.GUI.AddOutput($"START TIME    : {Globals.TIMESTAMP()}");
+            Globals.GUI.AddOutput("");
+
+            System.Diagnostics.Debug.WriteLine("? REFACTORED: Auditor.Start() - Using strategy pattern");
+
+            // Failsafe try block for catching unexpected exceptions
+            try
+            {
+                // Initialize the database and fixer
+                Database.Initialize();
+                Fixer.Initialize();
+
+                // Start the PREC parser
+                PRECParser.Start();
+
+                // Process the missing station types and show the PREC totals
+                //Database.ProcessMissingStationTypes();
+                Database.ShowTotals();
+
+                // Run the audits
+                Run();
+            }
+            catch (IndexOutOfRangeException error)
+            {
+                Globals.GUI.Error("Error during parsing : Do you have the correct CM version selected", error);
+                Globals.GUI.Error("Potential CM 7.1/8.0 known issue with Collector - please pull PRECs manually");
+            }
+            catch (Exception error)
+            {
+                Globals.GUI.Error("Excpetion occured during audit processing", error);
+            }
+
+            // Add a note to the report if the process was cancelled
+            if (Globals.CANCEL) Globals.GUI.AddOutput("** OPERATION WAS CANCELLED BY USER **");
+            else
+            {
+                Fixer.GenerateFixscript();
+                Globals.AUDIT_COMPLETE = true;
+            }
+
+            if (Globals.CM_RELEASE == CMRelease.CM8_1 && (Audits.AuditS31Hits != 0 || Audits.AuditS32Hits != 0 || Audits.AuditS33Hits != 0))
+            {
+                Globals.GUI.AddOutput("");
+                Globals.GUI.AddOutput("CM 8.1 PR_AMW CORRUPTION ISSUE");
+                Globals.GUI.AddOutput("==============================");
+                Globals.GUI.AddOutput("- Please utilize the corrective patch ");
+                Globals.GUI.AddOutput("");
+                Globals.GUI.AddOutput("");
+            }
+
+            // Get the runtime and add an output message
+            var runtime = (DateTime.Now - Globals.START_TIME).TotalSeconds;
+            Globals.GUI.AddOutput($"Audit completed in {runtime} seconds");
+
+            // Check for manual fixes and generate the lists
+            if (Database.ManualPorts.Count > 0)
+            {
+                var manualportreport = Globals.REPORT("manual_ports");
+                var manualports = new StreamWriter(manualportreport);
+                foreach (var manualport in Database.ManualPorts) manualports.WriteLine(manualport);
+                manualports.Close();
+                Globals.GUI.AddStatus($"Manual fix port list generated at {manualportreport}");
+            }
+
+            if (Database.ManualUIDs.Count > 0)
+            {
+                var manualuidreport = Globals.REPORT("manual_uids");
+                var manualuids = new StreamWriter(manualuidreport);
+                foreach (var manualuid in Database.ManualUIDs) manualuids.WriteLine(manualuid);
+                manualuids.Close();
+                Globals.GUI.AddStatus($"Manual fix UID list generated at {manualuidreport}");
+            }
+
+            // Write the report
+            var output = Globals.GUI.GetOutput();
+            var report = Globals.REPORT("audit");
+            var writer = new StreamWriter(report);
+            writer.Write(output);
+            writer.Close();
+
+            // Add a status message and go idle
+            Globals.GUI.AddStatus($"Audit report generated at {report}");
+            Globals.GUI.Idle();
+        }
+
+        // This method runs the audit loops
+        private static void Run()
+        {
+            // Validate all the required PRECs are loaded
+            if (!Database.ValidatePRECs()) return;
+
+            // Run the requested audit loops
+            if (Globals.STATION_AUDITS && !Globals.CANCEL) StationAudits();
+            if (Globals.TRUNK_AUDITS && !Globals.CANCEL) TrunkAudits();
+            if (Globals.ANNOUNCEMENT_AUDITS && !Globals.CANCEL) AnnouncementAudits();
+
+            // Show the counter totals
+            Audits.ShowCounters();
+        }
+
+        // Helper method to increment audit-specific hit counters
+        private static void IncrementAuditHits(string auditCode)
+        {
+            switch (auditCode)
+            {
+                case "AUDIT-S01": Audits.AuditS01Hits++; break;
+                case "AUDIT-S02": Audits.AuditS02Hits++; break;
+                case "AUDIT-S03": Audits.AuditS03Hits++; break;
+                case "AUDIT-S04": Audits.AuditS04Hits++; break;
+                case "AUDIT-S05": Audits.AuditS05Hits++; break;
+                case "AUDIT-S06": Audits.AuditS06Hits++; break;
+                case "AUDIT-S07": Audits.AuditS07Hits++; break;
+                case "AUDIT-S08": Audits.AuditS08Hits++; break;
+                case "AUDIT-S09": Audits.AuditS09Hits++; break;
+                case "AUDIT-S10": Audits.AuditS10Hits++; break;
+                case "AUDIT-S11": Audits.AuditS11Hits++; break;
+                case "AUDIT-S12": Audits.AuditS12Hits++; break;
+                case "AUDIT-S13": Audits.AuditS13Hits++; break;
+                case "AUDIT-S14": Audits.AuditS14Hits++; break;
+                case "AUDIT-S15": Audits.AuditS15Hits++; break;
+                case "AUDIT-S16": Audits.AuditS16Hits++; break;
+                case "AUDIT-S17": Audits.AuditS17Hits++; break;
+                case "AUDIT-S18": Audits.AuditS18Hits++; break;
+                case "AUDIT-S19": Audits.AuditS19Hits++; break;
+                case "AUDIT-S20": Audits.AuditS20Hits++; break;
+                case "AUDIT-S21": Audits.AuditS21Hits++; break;
+                case "AUDIT-S22": Audits.AuditS22Hits++; break;
+                case "AUDIT-S23": Audits.AuditS23Hits++; break;
+                case "AUDIT-S24": Audits.AuditS24Hits++; break;
+                case "AUDIT-S25": Audits.AuditS25Hits++; break;
+                case "AUDIT-S26": Audits.AuditS26Hits++; break;
+                case "AUDIT-S27": Audits.AuditS27Hits++; break;
+                case "AUDIT-S28": Audits.AuditS28Hits++; break;
+                case "AUDIT-S29": Audits.AuditS29Hits++; break;
+                case "AUDIT-S30": Audits.AuditS30Hits++; break;
+                case "AUDIT-S31": Audits.AuditS31Hits++; break;
+                case "AUDIT-S32": Audits.AuditS32Hits++; break;
+                case "AUDIT-S33": Audits.AuditS33Hits++; break;
+                case "AUDIT-S34": Audits.AuditS34Hits++; break;
+                case "AUDIT-S35": Audits.AuditS35Hits++; break;
+                case "AUDIT-A01": Audits.AuditA01Hits++; break;
+                case "AUDIT-A02": Audits.AuditA02Hits++; break;
+                case "AUDIT-A03": Audits.AuditA03Hits++; break;
+                case "AUDIT-A04": Audits.AuditA04Hits++; break;
+                case "AUDIT-A05": Audits.AuditA05Hits++; break;
+                case "AUDIT-A06": Audits.AuditA06Hits++; break;
+                case "AUDIT-A07": Audits.AuditA07Hits++; break;
+                case "AUDIT-A08": Audits.AuditA08Hits++; break;
+                case "AUDIT-A09": Audits.AuditA09Hits++; break;
+                case "AUDIT-A10": Audits.AuditA10Hits++; break;
+                case "AUDIT-A11": Audits.AuditA11Hits++; break;
+                case "AUDIT-T01": Audits.AuditT01Hits++; break;
+                case "AUDIT-T02": Audits.AuditT02Hits++; break;
+                case "AUDIT-T03": Audits.AuditT03Hits++; break;
+                case "AUDIT-T04": Audits.AuditT04Hits++; break;
+                case "AUDIT-T05": Audits.AuditT05Hits++; break;
+                case "AUDIT-T06": Audits.AuditT06Hits++; break;
+                case "AUDIT-T07": Audits.AuditT07Hits++; break;
+                case "AUDIT-T08": Audits.AuditT08Hits++; break;
+                case "AUDIT-T09": Audits.AuditT09Hits++; break;
+            }
+        }
+
+        // Helper method to handle audit failure with counter increments
+        private static void HandleAuditFailure(string auditCode, string message, string fixScript, bool isManualFix, AuditCategory category)
+        {
+            Globals.GUI.AddOutput(message);
+            Audits.Corrupted++;
+
+            if (category == AuditCategory.Station)
+            {
+                Audits.CorruptedStations++;
+            }
+            else if (category == AuditCategory.Trunk)
+            {
+                Audits.CorruptedTrunks++;
+            }
+            else if (category == AuditCategory.Announcement)
+            {
+                Audits.CorruptedAnnouncements++;
+            }
+
+            if (isManualFix)
+            {
+                Audits.ManualFixes++;
+            }
+
+            IncrementAuditHits(auditCode);
+        }
+
+        // This method runs the station audit loops
+        private static void StationAudits()
+        {
+            // Set values for the PR_AMW audit loop
+            Globals.PROCESS = Process.PR_AMW_LOOP;
+            Audits.ToCheck = Database.PR_AMWs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_AMW audit loop is starting");
+
+            // Do AuditS31
+            AuditStrategies.AuditS31();
+
+            // Loop through the records now
+            foreach (var pr_amw in Database.PR_AMWs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                var result32 = AuditStrategies.AuditS32(pr_amw);
+                if (!result32.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S32", result32.Message, result32.FixScript, result32.RequiresManualFix, AuditCategory.Station);
+                }
+
+                var result33 = AuditStrategies.AuditS33(pr_amw);
+                if (!result33.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S33", result33.Message, result33.FixScript, result33.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_STN audit loop
+            Globals.PROCESS = Process.PR_STN_LOOP;
+            Audits.ToCheck = Database.PR_STNs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_STN audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_stn in Database.PR_STNs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+                if (!pr_stn.IsAuditable) continue;
+
+                // Run the audits with ORIGINAL CONTROL FLOW (early exit on failure)
+                var result01 = AuditStrategies.AuditS01(pr_stn);
+                if (!result01.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S01", result01.Message, result01.FixScript, result01.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result04 = AuditStrategies.AuditS04(pr_stn);
+                if (!result04.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S04", result04.Message, result04.FixScript, result04.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result29 = AuditStrategies.AuditS29(pr_stn);
+                if (!result29.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S29", result29.Message, result29.FixScript, result29.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result10 = AuditStrategies.AuditS10(pr_stn);
+                if (!result10.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S10", result10.Message, result10.FixScript, result10.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result27 = AuditStrategies.AuditS27(pr_stn);
+                if (!result27.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S27", result27.Message, result27.FixScript, result27.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result28 = AuditStrategies.AuditS28(pr_stn);
+                if (!result28.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S28", result28.Message, result28.FixScript, result28.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_UDATA loop
+            Globals.PROCESS = Process.PR_UDATA_LOOP;
+            Audits.ToCheck = Database.PR_UDATAs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_UDATA audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_udata in Database.PR_UDATAs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+                if (!pr_udata.IsAuditable) continue;
+
+                // Run the audits
+                var result22 = AuditStrategies.AuditS22(pr_udata);
+                if (!result22.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S22", result22.Message, result22.FixScript, result22.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_PORT_UID loop
+            Globals.PROCESS = Process.PR_PORT_UID_LOOP;
+            Audits.ToCheck = Database.PR_PORT_UIDs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_PORT_UID audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_port_uid in Database.PR_PORT_UIDs)
+            {
+                // Pre-checked
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+                if (!pr_port_uid.IsAuditable) continue;
+
+                // Run through the audits
+                var result21 = AuditStrategies.AuditS21(pr_port_uid);
+                if (!result21.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S21", result21.Message, result21.FixScript, result21.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result06 = AuditStrategies.AuditS06(pr_port_uid);
+                if (!result06.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S06", result06.Message, result06.FixScript, result06.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result07 = AuditStrategies.AuditS07(pr_port_uid);
+                if (!result07.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S07", result07.Message, result07.FixScript, result07.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result08 = AuditStrategies.AuditS08(pr_port_uid);
+                if (!result08.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S08", result08.Message, result08.FixScript, result08.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result09 = AuditStrategies.AuditS09(pr_port_uid);
+                if (!result09.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S09", result09.Message, result09.FixScript, result09.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result15 = AuditStrategies.AuditS15(pr_port_uid);
+                if (!result15.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S15", result15.Message, result15.FixScript, result15.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result16 = AuditStrategies.AuditS16(pr_port_uid);
+                if (!result16.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S16", result16.Message, result16.FixScript, result16.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result17 = AuditStrategies.AuditS17(pr_port_uid);
+                if (!result17.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S17", result17.Message, result17.FixScript, result17.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+            }
+
+            // Set values for the PR_ST_CPS loop
+            Globals.PROCESS = Process.PR_ST_CPS_LOOP;
+            Audits.ToCheck = Database.PR_ST_CPSs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_ST_CPS audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_st_cps in Database.PR_ST_CPSs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+                if (pr_st_cps.Port == Globals.NULL_PORT) continue;
+
+                // Run the audits
+                var result02 = AuditStrategies.AuditS02(pr_st_cps);
+                if (!result02.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S02", result02.Message, result02.FixScript, result02.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result03 = AuditStrategies.AuditS03(pr_st_cps);
+                if (!result03.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S03", result03.Message, result03.FixScript, result03.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result12 = AuditStrategies.AuditS12(pr_st_cps);
+                if (!result12.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S12", result12.Message, result12.FixScript, result12.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result20 = AuditStrategies.AuditS20(pr_st_cps);
+                if (!result20.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S20", result20.Message, result20.FixScript, result20.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result30 = AuditStrategies.AuditS30(pr_st_cps);
+                if (!result30.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S30", result30.Message, result30.FixScript, result30.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+            }
+
+            // Set values for the PR_MOPORT loop
+            Globals.PROCESS = Process.PR_MOPORT_LOOP;
+            Audits.ToCheck = Database.PR_MOPORTs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_MOPORT audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_moport in Database.PR_MOPORTs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+                if (!pr_moport.IsAuditable) continue;
+
+                // Run the audits
+                var result13 = AuditStrategies.AuditS13(pr_moport);
+                if (!result13.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S13", result13.Message, result13.FixScript, result13.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result14 = AuditStrategies.AuditS14(pr_moport);
+                if (!result14.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S14", result14.Message, result14.FixScript, result14.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_EXT loop
+            Globals.PROCESS = Process.PR_EXT_LOOP;
+            Audits.ToCheck = Database.PR_EXTs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_EXT audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_ext in Database.PR_EXTs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result05 = AuditStrategies.AuditS05(pr_ext);
+                if (!result05.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S05", result05.Message, result05.FixScript, result05.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_FEXT loop
+            Globals.PROCESS = Process.PR_FEXT_LOOP;
+            Audits.ToCheck = Database.PR_FEXTs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_FEXT audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_fext in Database.PR_FEXTs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result34 = AuditStrategies.AuditS34(pr_fext);
+                if (!result34.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S34", result34.Message, result34.FixScript, result34.RequiresManualFix, AuditCategory.Station);
+                }
+
+                var result35 = AuditStrategies.AuditS35(pr_fext);
+                if (!result35.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S35", result35.Message, result35.FixScript, result35.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_BUTTON loop
+            Globals.PROCESS = Process.PR_BUTTON_LOOP;
+            Audits.ToCheck = Database.PR_BUTTONs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_BUTTON audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_button in Database.PR_BUTTONs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result11 = AuditStrategies.AuditS11(pr_button);
+                if (!result11.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S11", result11.Message, result11.FixScript, result11.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result18 = AuditStrategies.AuditS18(pr_button);
+                if (!result18.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S18", result18.Message, result18.FixScript, result18.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_BRIDGE loop
+            Globals.PROCESS = Process.PR_BRIDGE_LOOP;
+            Audits.ToCheck = Database.PR_BRIDGEs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_BRIDGE audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_bridge in Database.PR_BRIDGEs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result19 = AuditStrategies.AuditS19(pr_bridge);
+                if (!result19.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S19", result19.Message, result19.FixScript, result19.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_XMAP loop
+            Globals.PROCESS = Process.PR_XMAP_LOOP;
+            Audits.ToCheck = Database.PR_XMAPs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_XMAP audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_xmap in Database.PR_XMAPs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result25 = AuditStrategies.AuditS25(pr_xmap);
+                if (!result25.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S25", result25.Message, result25.FixScript, result25.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result23 = AuditStrategies.AuditS23(pr_xmap);
+                if (!result23.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S23", result23.Message, result23.FixScript, result23.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+
+            // Set values for the PR_OPT_STN loop
+            Globals.PROCESS = Process.PR_OPT_STN_LOOP;
+            Audits.ToCheck = Database.PR_OPT_STNs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_OPT_STN audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_opt_stn in Database.PR_OPT_STNs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result24 = AuditStrategies.AuditS24(pr_opt_stn);
+                if (!result24.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S24", result24.Message, result24.FixScript, result24.RequiresManualFix, AuditCategory.Station);
+                    continue;
+                }
+
+                var result26 = AuditStrategies.AuditS26(pr_opt_stn);
+                if (!result26.Passed)
+                {
+                    HandleAuditFailure("AUDIT-S26", result26.Message, result26.FixScript, result26.RequiresManualFix, AuditCategory.Station);
+                }
+            }
+        }
+
+        // This method runs the trunk audit loops
+        private static void TrunkAudits()
+        {
+
+            // Set values for the PR_ACD_TRUNK audit loop
+            Globals.PROCESS = Process.PR_ACD_TRUNK_LOOP;
+            Audits.ToCheck = Database.PR_ACD_TRUNKs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_ACD_TRUNK_LOOP loop is starting");
+
+            foreach (var pr_acd_trunk in Database.PR_ACD_TRUNKs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+                if (pr_acd_trunk.Flagged) continue;
+
+                // Run the audits
+                var result04 = AuditStrategies.AuditT04(pr_acd_trunk);
+                if (!result04.Passed)
+                {
+                    HandleAuditFailure("AUDIT-T04", result04.Message, result04.FixScript, result04.RequiresManualFix, AuditCategory.Trunk);
+                }
+            }
+
+            // Set values for the PR_MOPORT audit loop
+            Globals.PROCESS = Process.PR_MOPORT_LOOP;
+            Audits.ToCheck = Database.PR_MOPORTs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_MOPORT_LOOP loop is starting");
+
+            foreach (var pr_moport in Database.PR_MOPORTs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+                if (!pr_moport.IsAuditable) continue;
+
+                var result07 = AuditStrategies.AuditT07(pr_moport);
+                if (!result07.Passed)
+                {
+                    HandleAuditFailure("AUDIT-T07", result07.Message, result07.FixScript, result07.RequiresManualFix, AuditCategory.Trunk);
+                    continue;
+                }
+
+                var result09 = AuditStrategies.AuditT09(pr_moport);
+                if (!result09.Passed)
+                {
+                    HandleAuditFailure("AUDIT-T09", result09.Message, result09.FixScript, result09.RequiresManualFix, AuditCategory.Trunk);
+                    continue;
+                }
+            }
+
+            // Set values for the PR_PORT_UID audit loop
+            Globals.PROCESS = Process.PR_PORT_UID_LOOP;
+            Audits.ToCheck = Database.PR_PORT_UIDs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_PORT_UID_LOOP loop is starting");
+
+            foreach (var pr_port_uid in Database.PR_PORT_UIDs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+                if (!pr_port_uid.IsTrunk) continue;
+
+                var result08 = AuditStrategies.AuditT08(pr_port_uid);
+                if (!result08.Passed)
+                {
+                    HandleAuditFailure("AUDIT-T08", result08.Message, result08.FixScript, result08.RequiresManualFix, AuditCategory.Trunk);
+                    continue;
+                }
+            }
+
+            // Set values for the PR_TR_GRP audit loop
+            Globals.PROCESS = Process.PR_TR_GRP_LOOP;
+            Audits.ToCheck = Database.PR_TR_GRPs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_TR_GRP loop is starting");
+
+            foreach (var pr_tr_grp in Database.PR_TR_GRPs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result05 = AuditStrategies.AuditT05(pr_tr_grp);
+                if (!result05.Passed)
+                {
+                    HandleAuditFailure("AUDIT-T05", result05.Message, result05.FixScript, result05.RequiresManualFix, AuditCategory.Trunk);
+                }
+
+                // Get all the members for the group and audit them
+                var pr_tr_mbrs = Database.PR_TR_MBRs.FindAll(a => a.TrunkGroup == pr_tr_grp.UID);
+                foreach (var pr_tr_mbr in pr_tr_mbrs)
+                {
+                    var result01 = AuditStrategies.AuditT01(pr_tr_mbr);
+                    if (!result01.Passed)
+                    {
+                        HandleAuditFailure("AUDIT-T01", result01.Message, result01.FixScript, result01.RequiresManualFix, AuditCategory.Trunk);
+                        continue;
+                    }
+
+                    var result06 = AuditStrategies.AuditT06(pr_tr_grp.Measured, pr_tr_mbr);
+                    if (!result06.Passed)
+                    {
+                        HandleAuditFailure("AUDIT-T06", result06.Message, result06.FixScript, result06.RequiresManualFix, AuditCategory.Trunk);
+                    }
+                }
+
+                // Get all the trunks for the group and audit them
+                var pr_trunks = Database.PR_TRUNKs.FindAll(a => a.TrunkGroup == pr_tr_grp.UID);
+                foreach (var pr_trunk in pr_trunks)
+                {
+                    var result02 = AuditStrategies.AuditT02(pr_trunk);
+                    if (!result02.Passed)
+                    {
+                        HandleAuditFailure("AUDIT-T02", result02.Message, result02.FixScript, result02.RequiresManualFix, AuditCategory.Trunk);
+                        continue;
+                    }
+
+                    var result03 = AuditStrategies.AuditT03(pr_trunk);
+                    if (!result03.Passed)
+                    {
+                        HandleAuditFailure("AUDIT-T03", result03.Message, result03.FixScript, result03.RequiresManualFix, AuditCategory.Trunk);
+                    }
+                }
+            }
+        }
+
+        // This method runs the announcement audit loops
+        private static void AnnouncementAudits()
+        {
+            // Set values for the PR_INT_ANNC audit loop
+            Globals.PROCESS = Process.PR_INT_ANNC_LOOP;
+            Audits.ToCheck = Database.PR_INT_ANNCs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_INT_ANNC audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_int_annc in Database.PR_INT_ANNCs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result09 = AuditStrategies.AuditA09(pr_int_annc);
+                if (!result09.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A09", result09.Message, result09.FixScript, result09.RequiresManualFix, AuditCategory.Announcement);
+                    continue;
+                }
+
+                var result01 = AuditStrategies.AuditA01(pr_int_annc);
+                if (!result01.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A01", result01.Message, result01.FixScript, result01.RequiresManualFix, AuditCategory.Announcement);
+                    continue;
+                }
+
+                var result02 = AuditStrategies.AuditA02(pr_int_annc);
+                if (!result02.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A02", result02.Message, result02.FixScript, result02.RequiresManualFix, AuditCategory.Announcement);
+                    continue;
+                }
+
+                var result05 = AuditStrategies.AuditA05(pr_int_annc);
+                if (!result05.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A05", result05.Message, result05.FixScript, result05.RequiresManualFix, AuditCategory.Announcement);
+                    continue;
+                }
+
+                var result06 = AuditStrategies.AuditA06(pr_int_annc);
+                if (!result06.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A06", result06.Message, result06.FixScript, result06.RequiresManualFix, AuditCategory.Announcement);
+                    continue;
+                }
+
+                var result08 = AuditStrategies.AuditA08(pr_int_annc);
+                if (!result08.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A08", result08.Message, result08.FixScript, result08.RequiresManualFix, AuditCategory.Announcement);
+                }
+            }
+
+            // Set values for the PR_IANC_BD audit loop
+            Globals.PROCESS = Process.PR_IANC_BD_LOOP;
+            Audits.ToCheck = Database.PR_IANC_BDs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_IANC_BD audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_ianc_bd in Database.PR_IANC_BDs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result03 = AuditStrategies.AuditA03(pr_ianc_bd);
+                if (!result03.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A03", result03.Message, result03.FixScript, result03.RequiresManualFix, AuditCategory.Announcement);
+                }
+            }
+
+            // Set values for the PR_IANC_BD audit loop
+            Globals.PROCESS = Process.PR_GM_IANC_BD_LOOP;
+            Audits.ToCheck = Database.PR_GM_IANC_BDs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_GM_IANC_BD audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_gm_ianc_bd in Database.PR_GM_IANC_BDs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result10 = AuditStrategies.AuditA10(pr_gm_ianc_bd);
+                if (!result10.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A10", result10.Message, result10.FixScript, result10.RequiresManualFix, AuditCategory.Announcement);
+                }
+            }
+
+            // Set values for the PR_EXT loop
+            Globals.PROCESS = Process.PR_EXT_LOOP;
+            Audits.ToCheck = Database.PR_EXTs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_EXT audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_ext in Database.PR_EXTs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result04 = AuditStrategies.AuditA04(pr_ext);
+                if (!result04.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A04", result04.Message, result04.FixScript, result04.RequiresManualFix, AuditCategory.Announcement);
+                }
+            }
+
+            // Set values for the PR_UDATA loop
+            Globals.PROCESS = Process.PR_UDATA_LOOP;
+            Audits.ToCheck = Database.PR_UDATAs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_UDATA audit loop is starting");
+
+            // Loop through the records
+            foreach (var pr_udata in Database.PR_UDATAs)
+            {
+                // Pre-checks
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // Run the audits
+                var result07 = AuditStrategies.AuditA07(pr_udata);
+                if (!result07.Passed)
+                {
+                    HandleAuditFailure("AUDIT-A07", result07.Message, result07.FixScript, result07.RequiresManualFix, AuditCategory.Announcement);
+                }
+            }
+
+            // Set values for the PR_UDATA loop
+            Globals.PROCESS = Process.PR_AUDIO_GRP_LOOP;
+            Audits.ToCheck = Database.PR_AUDIO_GRPs.Count;
+            Audits.Checked = 0;
+            Globals.GUI.AddStatus("PR_AUDIO_GRP audit loop is starting");
+
+            // COMPLICATED AUDIT LOOP - PLEASE BE CAREFUL WITH CHANGES
+            foreach (var pr_audio_grp in Database.PR_AUDIO_GRPs)
+            {
+                Audits.Checked++;
+                if (Globals.CANCEL) return;
+
+                // We need the UID of an announcement using this group, lets find one
+                var pr_int_annc = Database.PR_INT_ANNCs.Find(a => a.AudioGroup == pr_audio_grp.AudioGroup);
+
+                // Make sure we have one
+                if (pr_int_annc == null) continue;
+
+                // Now, get all the boards that use this UID
+                var pr_gm_ianc_bds = Database.PR_GM_IANC_BDs.FindAll(a => a.UID == pr_int_annc.UID);
+
+                // Loop through these boards
+                foreach (var pr_gm_ianc_bd in pr_gm_ianc_bds)
+                {
+                    var result11 = AuditStrategies.AuditA11(pr_gm_ianc_bd, pr_audio_grp.AudioGroup);
+                    if (!result11.Passed)
+                    {
+                        HandleAuditFailure("AUDIT-A11", result11.Message, result11.FixScript, result11.RequiresManualFix, AuditCategory.Announcement);
+                    }
+                }
+            }
+        }
+    }
+}
+
+====================================================================
+FILE: Modules\Collector.cs
+====================================================================
+
+/*
+ * Auditor3 :: Collector
+ * 
+ * This class defines the process that retrieves PRECs from a CM.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ */
+
+using System;
+using System.IO;
+using System.Text.RegularExpressions;
+using Renci.SshNet;
+
+namespace Auditor3 {
+    internal static class Collector {
+
+        private static string _precs;
+        private static ShellStream _shell;
+
+        // This method is used to start the collector
+        internal static void Start() {
+            // Set the state/process, set the start time, and add a status message
+            Globals.STATE = State.RUNNING;
+            Globals.PROCESS = Process.COLLECT;
+            Globals.START_TIME = DateTime.Now;
+            Globals.GUI.AddStatus("PREC collector is starting");
+
+            Globals.PRECS_LOADED = false;
+            Globals.AUDIT_COMPLETE = false;
+
+            _precs = "";
+
+            try {
+                Run();                
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured while collecting PRECs", error);
+            }
+
+            Globals.CM.CloseTCM(_shell);
+            Globals.CM.CloseOSSI(_shell);
+            _shell.Dispose();
+            _shell = null;
+
+            Globals.GUI.Idle();
+        }
+
+        // This method is used to run the collector
+        internal static void Run() {
+            // Make sure the site connection is up
+            if (!Globals.CM.Connected())
+                if (!Globals.CM.Connect()) return;
+
+            // Get a shell from the connection
+            _shell = Globals.CM.Shell();
+            if (_shell == null) { return; }            
+
+            // Add the header to the report
+            Globals.GUI.AddOutput($"PREC Collector v{Globals.VERSION()}");
+            Globals.GUI.AddOutput("");
+            Globals.GUI.AddOutput($"CM_RELEASE    : {Globals.CM_RELEASE}");
+            Globals.GUI.AddOutput($"STATIONS      : {Globals.STATION_AUDITS}");
+            Globals.GUI.AddOutput($"TRUNKS        : {Globals.TRUNK_AUDITS}");
+            Globals.GUI.AddOutput($"ANNOUNCEMENTS : {Globals.ANNOUNCEMENT_AUDITS}");
+            Globals.GUI.AddOutput($"START TIME    : {Globals.TIMESTAMP()}");
+            Globals.GUI.AddOutput("");            
+
+            // Open OSSI and TCM
+            if (!Globals.CM.OpenOSSI(_shell)) return;
+            if (!Globals.CM.OpenTCM(_shell)) return;
+
+            if (Globals.STATION_AUDITS) {
+                if (!PullPREC("PR_AMW")) return;
+                if (!PullPREC("PR_BRIDGE")) return;
+                if (!PullPREC("PR_BUTTON")) return;
+                if (!PullPREC("PR_EXT")) return;
+                if (!PullPREC("PR_FEXT")) return;
+                if (!PullPREC("PR_MOBD")) return;
+                if (!PullPREC("PR_MOPORT")) return;
+                if (!PullPREC("PR_OPT_STN")) return;
+                if (!PullPREC("PR_PORT_UID")) return;
+                if (!PullPREC("PR_ST_CPS")) return;
+                if (!PullPREC("PR_STN")) return;
+                if (!PullPREC("PR_TTISET")) return;
+                if (!PullPREC("PR_UDATA")) return;
+                if (!PullPREC("PR_XMAP")) return;
+            }
+
+            if (Globals.ANNOUNCEMENT_AUDITS) {
+                if (!Globals.STATION_AUDITS) {
+                    if (!PullPREC("PR_EXT")) return;
+                    if (!PullPREC("PR_UDATA")) return;
+                }
+                if (!PullPREC("x4c90")) return;
+                if (!PullPREC("x4c91")) return;
+                if (!PullPREC("PR_AN_GRP")) return;
+                if (!PullPREC("PR_GM_IANC_BD")) return;
+                if (!PullPREC("PR_IANC_BD")) return;
+                if (!PullPREC("PR_INT_ANNC")) return;
+            }
+
+            if (Globals.TRUNK_AUDITS) {
+                if (!Globals.STATION_AUDITS) {
+                    if (!PullPREC("PR_MOPORT")) return;
+                    if (!PullPREC("PR_PORT_UID")) return;
+                }
+                if (!PullPREC("PR_ACD_TRUNK")) return;
+                if (!PullPREC("PR_TR_GRP")) return;
+                if (!PullPREC("PR_TR_MBR")) return;
+                if (!PullPREC("PR_TRUNK")) return;
+            }
+
+            Globals.GUI.AddStatus("Cleaning pulled data");
+            _precs = Globals.CLEAN(_precs);
+
+            Globals.GUI.SetPRECs(_precs);
+
+            var precs = new StreamWriter(Globals.PRECS_FILE);
+            precs.Write(_precs);
+            precs.Close();
+
+            var runtime = (DateTime.Now - Globals.START_TIME).TotalSeconds;
+            Globals.GUI.AddOutput($"Collector completed in {runtime} seconds");
+
+            _precs = null;
+            Globals.PRECS_LOADED = true;
+        }
+
+        // This method is for running a PREC command
+        private static bool PullPREC(string prec) {
+            Globals.GUI.AddOutput($"Pulling {prec}");
+
+            var cmd = $"prec {prec.ToLower()} nr";
+
+            string result = null;
+
+            // Loop for 3 tries pulling each PREC
+            for (var i = 0; i <= 3; i++) {
+                result = Globals.CM.RunTCMCommand(_shell, cmd);
+                if (result == null) return false;
+                if (ValidatePRECData(prec, cmd, result)) break;
+                Globals.GUI.Error($"TCM prec nread command failed. Attempt: {i}");
+                if (i == 3) {
+                    Globals.GUI.Error("TCM prec nread command failed 3 times, aborting");
+                    return false;
+                }
+            }
+
+            _precs += result + Environment.NewLine;
+            return true;
+        }
+
+        // Method for checking if we have valid PREC data response
+        private static bool ValidatePRECData(string prec, string command, string output) {
+            // Does the output have the PREC name, if it does, its likely valid
+            if (output.Contains(prec)) return true;
+
+            // Split the lines and make sure they are all either prompt lines or null
+            var prompt = new Regex("tcm[0-9]+>");
+            var lines = output.Split('\n');
+            foreach (var line in lines) {
+                if (prompt.IsMatch(line) || string.IsNullOrEmpty(line) || line.Contains(command)) continue;
+                Globals.GUI.AddStatus("PREC Output Validation Failure::");
+                Globals.GUI.AddStatus(line);
+                return false;
+            }
+
+            return true;
+        }
+    }
+}
+
+
+====================================================================
+FILE: Modules\EECCRAudit.cs
+====================================================================
+
+/*
+ * Auditor3 :: EECCRAudit
+ * 
+ * This class defines the process that runs various OSSI commands and checks for EECCRs.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.IO;
+using Renci.SshNet;
+
+namespace Auditor3 {
+    internal static class EECCRAudit {
+        private static string _results;         // Variable for storing the OSSI output as we go
+        private static int _eeccrs;             // The total EECCRs we found
+        private static ShellStream _shell;
+
+        // String definition of EECCR to hunt for
+        private const string _eeccr = "Error encountered, can't complete request";
+
+        // List of items to run list commands against during EECCR audit
+        private static readonly string[] EECCRList = new string[] { "station", "agent-loginID", "announcement", "extension-type", "hunt-group",
+            "off-pbx-telephone station-mapping", "trunk-group", "signaling-group", "survivable-processor", "vector", "route-pattern",
+            "vrt", "partition-route-table", "data-module", "audio-group", "ip-interface all", "ip-route", "ethernet-options",
+            "media-gateway", "node-routing", "node-names", "extended-pickup-group", "cor", "abbreviated-dialing personal",
+            "abbreviated-dialing group", "aca-parameters", "aar analysis", "ars analysis", "configuration all", "configuration ds1",
+            "coverage answer-group", "coverage path", "intercom-group", "personal-CO-line", "pickup-group", "term-ext-group",
+            "toll all", "toll restricted-call", "toll toll-list", "toll unrestricted-call", "uniform-dialplan", "vdn", "multimedia ip-stations",
+            "multimedia ip-unregistered" };
+
+        // List of items to run display commands against during EECCR audit
+        private static readonly string[] EECCRDisplay = new string[] { "system-parameters customer-options", "system-parameters features",
+            "system-parameters hospitality", "system-parameters ip-options", "system-parameters maintenance",
+            "system-parameters mlpp","system-parameters security", "system-parameters cdr",
+            "ip-services", "music-sources" };
+
+        // This method is used to start the EECCR auditor
+        internal static void Start() {
+            // Set the state/process, set the start time, and add a status message
+            Globals.STATE = State.RUNNING;
+            Globals.PROCESS = Process.EECCR_AUDIT;
+            Globals.START_TIME = DateTime.Now;
+            Globals.GUI.AddStatus("EECCR audit is starting");
+
+            try {
+                Run();
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured while running EECCR audit", error);
+            }
+
+            Globals.CM.CloseTCM(_shell);
+            Globals.CM.CloseOSSI(_shell);
+            _shell.Dispose();
+            _shell = null;
+
+            Globals.GUI.Idle();
+        }
+
+        // This method runs the actual audit
+        private static void Run() {
+            // Make sure the site connection is up
+            if (!Globals.CM.Connected()) {
+                var connect = Globals.CM.Connect();
+                if (!connect) return;
+            }
+
+            // Initialize the results and report fields
+            _results = "";
+            _eeccrs = 0;            
+
+            // Get a shell from the connection
+            _shell = Globals.CM.Shell();
+            if (_shell == null) { return; }
+
+            // Add the header to the report
+            Globals.GUI.AddOutput($"EECCR Audit v{Globals.VERSION()}");
+            Globals.GUI.AddOutput("");
+            Globals.GUI.AddOutput($"CM_RELEASE    : {Globals.CM_RELEASE}");
+            Globals.GUI.AddOutput($"STATIONS      : {Globals.STATION_AUDITS}");
+            Globals.GUI.AddOutput($"TRUNKS        : {Globals.TRUNK_AUDITS}");
+            Globals.GUI.AddOutput($"ANNOUNCEMENTS : {Globals.ANNOUNCEMENT_AUDITS}");
+            Globals.GUI.AddOutput($"START TIME    : {Globals.TIMESTAMP()}");
+            Globals.GUI.AddOutput("");
+
+            // Open OSSI
+            if (!Globals.CM.OpenOSSI(_shell)) return;
+
+            // Run all of the commands
+            foreach (var item in EECCRList) if (!RunList(item)) return;
+            foreach (var item in EECCRDisplay) if (!RunDisplay(item)) return;
+
+            Globals.GUI.AddOutput("");
+            Globals.GUI.AddOutput("EECCRS: " + _eeccrs);
+            Globals.GUI.AddOutput("");
+
+            var runtime = (DateTime.Now - Globals.START_TIME).TotalSeconds;
+            Globals.GUI.AddOutput($"EECCR audit completed in {runtime} seconds");
+
+            // Write the report
+            var output = Globals.GUI.GetOutput();
+            var report = Globals.REPORT("eeccrs");
+            var writer = new StreamWriter(report);
+            writer.Write(output);
+            writer.Close();
+
+            Globals.GUI.AddStatus($"EECCR audit report generated at {report}");
+        }
+
+        // Method for running a list command
+        private static bool RunList(string item) {
+            Globals.GUI.AddOutput("- Running list " + item);
+
+            // Run the command and make sure we got results
+            var result = Globals.CM.RunSATCommand(_shell, $"list {item}");
+            if (result == null) return false;
+
+            // Check if we have an EECCR
+            if (result.Contains(_eeccr)) {
+                Globals.GUI.AddOutput("EECCR: list " + item);
+                Globals.GUI.AddOutput(Globals.LAST_LINES(result));
+                _eeccrs++;
+            }
+
+            // Store the results
+            _results += result += Environment.NewLine;
+            return true;
+        }
+
+        // Method for running a display command
+        private static bool RunDisplay(string item) {
+            Globals.GUI.AddOutput("- Running display " + item);
+
+            // Run the command and make sure we got results
+            var result = Globals.CM.RunSATCommand(_shell, $"display {item}");
+            if (result == null) return false;
+
+            // Check if we have an EECCR
+            if (result.Contains(_eeccr)) {
+                Globals.GUI.AddOutput("EECCR: display " + item);
+                Globals.GUI.AddOutput(Globals.LAST_LINES(result));
+                _eeccrs++;
+            }
+
+            // Store the results
+            _results += result += Environment.NewLine;
+            return true;
+        }
+    }
+}
+
+
+====================================================================
+FILE: Modules\Fixer.cs
+====================================================================
+
+/*
+ * Auditor3 :: Fixer
+ * 
+ * This class defines the process that generates the fixes for issues that are found.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+
+namespace Auditor3 {
+    internal static class Fixer {
+
+        internal static List<string> FixLines;          // List to store the lines for the fix script
+
+        // This method is used to initialize the fix script storage list
+        internal static void Initialize() {
+            FixLines = new List<string>();
+        }
+
+        // This method is for generating the fixscript
+        internal static void GenerateFixscript() {
+            if (FixLines.Count == 0) return;
+            var fixscript = $"{Globals.REPORT_DIR}fixscript_{DateTime.Now.ToString("yyyyMMdd_HHmmss")}";
+            var writer = new StreamWriter(fixscript);
+            writer.Write(string.Join(Environment.NewLine, FixLines));
+            writer.Close();
+            Globals.GUI.AddOutput($"Fixscript generated at {fixscript}");
+            Globals.GUI.AddOutput("");
+        }
+
+        // This method adds fix lines to the script list
+        internal static void AddFix(string fix) {
+            // Split on any newlines and remove any empty lines
+            var fixes = fix.Split('\n').Where(a => !string.IsNullOrEmpty(a));
+
+            // Add the lines to the list
+            foreach (var line in fixes) {
+                // Make sure this line is a 'prec ...' command
+                if (!line.StartsWith("prec")) continue;
+                FixLines.Add(line);
+            }
+        }
+
+        // Class of methods used for generating add commands
+        internal static class Add {
+
+            // This method is for adding a PR_MOPORT record
+            internal static string PR_MOPORT(string uid, string port) {
+                // Try and get the STN object
+                var pr_stn = Database.PR_STNs.Find(a => a.UID == uid);
+
+                // Define a variable to hold the fix
+                var fix = "";
+
+                // Check if we have the MO value
+                if (pr_stn?.GetMO() != null) {
+                    var pr_ttiset = Database.PR_TTISETs.Find(a => a.UID == uid);
+                    var tti = pr_ttiset == null ? "0" : "1";
+                    var mo = port.StartsWith("7f") ? "0444" : pr_stn.GetMO();
+                    fix = $"prec pr_moport a l0x{tti}{mo} l0x0 l0x{port} l0x0";
+                    AddFix(fix);
+                } else {
+                    fix = $"** UNABLE TO DETERMINE MO VALUE **{Environment.NewLine}** MANUAL FIX REQUIRED **";
+                    Audits.ManualFixes++;
+                    Database.ManualPorts.Add(port);
+                    Database.ManualUIDs.Add(uid);
+                }
+
+                // Return the fix for the report
+                return fix;
+            }
+
+            // This method is for adding a PR_PORT_UID record
+            internal static string PR_PORT_UID(string uid, string port) {
+                // Create the fix line, add it to the fix list and return it for the report
+                var fix = $"prec pr_port_uid a l0x{port} l0x{uid}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for adding a PR_ST_CPS record
+            internal static string PR_ST_CPS(string uid, string port) {
+                // Create the fix
+                var fix = $"prec pr_st_cps l l0x{uid}{Environment.NewLine}prec pr_st_cps a l0x{uid} l0x{port} l0x0 l0x0 l0x0";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for adding a PR_FEXT record
+            internal static string PR_FEXT(string uid) {
+                // Get the PR_EXT record, create the fix, add it to the list, and return it
+                var pr_ext = Database.PR_EXTs.Find(a => a.UID == uid);
+                var split = pr_ext.PREC[0].Split(' ');
+                var fix = $"prec pr_fext a l0x{split[1]} l0x{split[2]} l0x{split[3]} l0x{split[4]}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for adding a PR_IANC_BD record
+            internal static string PR_IANC_BD(string uid, string board, string indexlname) {
+                // Create the fix, add it to the list, and return it
+                var fix = $"prec pr_ianc_bd a l0x{uid} l0x{board} l0x{indexlname} l0x4000";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for adding a PR_GM_IANC_BD record
+            internal static string PR_GM_IANC_BD(string uid, string board) {
+                // Create the fix, add it to the list, and return it
+                var fix = $"prec pr_gm_ianc_bd a l0x{uid} l0x{board} l0x1";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for adding a PR_ACD_TRUNK record
+            internal static string PR_ACD_TRUNK(PR_TR_MBR pr_tr_mbr) {
+                // Get any PR_ACD_TRUNK from the group
+                var pr_acd_trunk = Database.PR_ACD_TRUNKs.Find(a => a.TrunkGroupUID == pr_tr_mbr.TrunkGroup);
+                if (pr_acd_trunk == null) {
+                    return null;
+                } else {
+                    var fix = $"prec pr_acd_trunk a l0x{pr_tr_mbr.TrunkGroup} l0x{pr_tr_mbr.UID} l0x{pr_acd_trunk.TrunkType} l0x{pr_acd_trunk.Split} l0x{pr_tr_mbr.Port} l0x{pr_acd_trunk.MeasuredBy}";
+                    AddFix(fix);
+                    return fix;
+                }
+            }
+
+            // This method is for adding a PR_AN_GRP record
+            internal static string PR_AN_GRP(string uid, string audiogroup) {
+                var fix = $"prec pr_an_grp a l0x{uid} l0x0 l0x1 l0x{audiogroup}02";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for adding a new IP port
+            internal static string NewIPPort(string uid) {
+                
+                // Define a stringbuilder for storing the commands
+                var fix = new StringBuilder();
+
+                // Get the PR_STN record and make sure we have a MO value
+                var pr_stn = Database.PR_STNs.Find(a => a.UID == uid);
+                if (pr_stn?.GetMO() != null) {
+                    // Lets get a free port
+                    var port = Database.FindUnusedIPPort();
+                    if (port != null) {
+                        // We have a port and a MO, now get the PR_ST_CPS record and see if we need
+                        // to add or update
+                        var pr_st_cps = Database.PR_ST_CPSs.Find(a => a.UID == uid);
+                        if (pr_st_cps != null) {
+                            fix.AppendLine($"prec pr_st_cps l l0x{uid}");
+                            fix.AppendLine($"prec pr_st_cps w l0x{uid} l0x{port} l0x0 l0x0 l0x0");
+                        } else {
+                            fix.AppendLine($"prec pr_st_cps a l0x{uid} l0x{port} l0x0 l0x0 l0x0");
+                        }
+
+                        fix.AppendLine($"prec pr_port_uid a l0x{port} l0x{uid}");
+                        fix.AppendLine($"prec pr_moport a l0x{pr_stn.GetMO()} l0x0 l0x{port} l0x0");
+
+                        AddFix(fix.ToString());
+                    } else {
+                        // We didn't get a port for some reason
+                        fix.AppendLine("** UNABLE TO DETERMINE NEW IP PORT TO USE **");
+                        fix.AppendLine("** MANUAL FIX REQUIRED **");
+                        Audits.ManualFixes++;
+                        Database.ManualUIDs.Add(uid);
+                    }
+                } else {
+                    // Not able to get the correct MO
+                    fix.AppendLine("** UNABLE TO DETERMINE CORRECT MO VALUE **");
+                    fix.AppendLine("** MANUAL FIX REQUIRED **");
+                    Audits.ManualFixes++;
+                    Database.ManualUIDs.Add(uid);
+                }
+
+                // Return the fixes for the report
+                return fix.ToString();
+            }
+
+            // This method is used to add missing trunk port PRECs
+            internal static string TrunkPort(PR_TRUNK pr_trunk) {
+                // Create the fix object
+                var fix = new StringBuilder();
+
+                if (!pr_trunk.HasMOPORT()) {
+                    var pr_trunks = Database.PR_TRUNKs.FindAll(a => a.TrunkGroup == pr_trunk.TrunkGroup);
+                    var moFound = false;
+                    var mo = "";
+
+                    foreach (var check in pr_trunks) {
+                        var pr_moport = Database.PR_MOPORTs.Find(a => a.Port == check.Port);
+                        if (pr_moport != null) {
+                            moFound = true;
+                            mo = pr_moport.MO;
+                            break;
+                        }
+                    }
+
+                    if (!moFound) {
+                        fix.AppendLine("** NO MO FOUND FOR THIS TRUNK GROUP **");
+                        fix.AppendLine("** MANUAL FIX REQUIRED **");
+                        Audits.ManualFixes++;
+                        return fix.ToString();
+                    }
+
+                    fix.AppendLine($"prec pr_moport a l0x{mo} l0x0 l0x{pr_trunk.Port} l0x0");
+                }
+
+                if (!pr_trunk.HasPORTUID()) {
+                    fix.AppendLine($"prec pr_port_uid a l0x{pr_trunk.Port} l0x{pr_trunk.UID}");
+                }
+
+                AddFix(fix.ToString());
+                return fix.ToString();
+            }
+        }
+
+        // Class of methods used for generating remove commands
+        internal static class Remove {
+            // Method for removing a PR_AMW record
+            internal static string PR_AMW(PR_AMW pr_amw) {
+                var fields = pr_amw.PREC[0].Split(' ');
+                var fix = $"prec pr_amw d l0x{fields[1]} l0x{fields[2]} l0x{fields[3]}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // Method for removing a PR_GM_IANC_BD record
+            internal static string PR_GM_IANC_BD(PR_GM_IANC_BD pr_gm_ianc_bd) {
+                var fix = $"prec pr_gm_ianc_bd d l0x{pr_gm_ianc_bd.UID} l0x{pr_gm_ianc_bd.Board}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for removing a PR_ACD_TRUNK record
+            internal static string PR_ACD_TRUNK(string trunkgroupuid, string trunkmemberuid) {
+                var fix = $"prec pr_acd_trunk d l0x{trunkgroupuid} l0x{trunkmemberuid}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for removing a station's records
+            internal static string Station(string uid) {
+                bool extFound = false;
+                bool portFound = false;
+                var ext1 = "";
+                var ext2 = "";
+                var port = "";
+
+                var pr_ext = Database.PR_EXTs.Find(a => a.UID == uid);
+                if (pr_ext != null) {
+                    var pr_ext_split = pr_ext.PREC[0].Split(' ');
+                    ext1 = pr_ext_split[1];
+                    ext2 = pr_ext_split[2];
+                    extFound = true;
+                }
+
+                if (!extFound) {
+                    var pr_fext = Database.PR_FEXTs.Find(a => a.UID == uid);
+                    if (pr_fext != null) {
+                        var pr_fext_split = pr_fext.PREC[0].Split(' ');
+                        ext1 = pr_fext_split[1];
+                        ext2 = pr_fext_split[2];
+                        extFound = true;
+                    }
+                }
+
+                var pr_st_cps = Database.PR_ST_CPSs.Find(a => a.UID == uid);
+                if (pr_st_cps != null && pr_st_cps.Port != Globals.NULL_PORT) {
+                    port = pr_st_cps.Port;
+                    portFound = true;
+                }
+
+                if (!portFound) {
+                    var pr_port_uid = Database.PR_PORT_UIDs.Find(a => a.UID == uid);
+                    if (pr_port_uid != null && pr_port_uid.Port != Globals.NULL_PORT) {
+                        port = pr_port_uid.Port;
+                        portFound = true;
+                    }
+                }
+
+                var fix = new StringBuilder();
+                fix.AppendLine($"prec pr_button l l0x{uid} h0x1");
+                fix.AppendLine($"prec pr_button d l0x{uid} h0x1");
+                fix.AppendLine($"prec pr_st_cps l l0x{uid}");
+                fix.AppendLine($"prec pr_st_cps d l0x{uid}");
+                fix.AppendLine($"prec pr_lwcuser d l0x{uid}");
+                fix.AppendLine($"prec pr_pl_ad d l0x{uid} 1");
+                fix.AppendLine($"prec pr_pl_ad d l0x{uid} 2");
+                fix.AppendLine($"prec pr_pl_ad d l0x{uid} 3");
+                fix.AppendLine($"prec pr_ad_user d l0x{uid}");
+                fix.AppendLine($"prec pr_udata d l0x{uid}");
+                fix.AppendLine($"prec pr_rjc_stn d l0x{uid}");
+                fix.AppendLine($"prec pr_stn d l0x{uid}");
+                fix.AppendLine($"prec pr_ttiset d l0x{uid}");
+                fix.AppendLine($"prec pr_ttitype d l0x{uid}");
+                fix.AppendLine($"prec pr_fext d l0x{ext1} l0x{ext2}");
+
+                if (extFound) {
+                    fix.AppendLine($"prec pr_ext d l0x{ext1} l0x{ext2}");                    
+                }
+
+                if (portFound) {
+                    fix.AppendLine($"prec pr_port_uid d l0x{port}");
+                    fix.AppendLine($"prec pr_moport d l0 l0 l0x{port}");
+                }
+
+                AddFix(fix.ToString());
+                return fix.ToString();
+            }
+
+            // This method is for removing a PR_BRIDGE record
+            internal static string PR_BRIDGE(PR_BRIDGE pr_bridge) {
+                var fix = new StringBuilder();
+                fix.AppendLine($"prec pr_bridge l l0x{pr_bridge.PrimaryUID} l0x{pr_bridge.BridgedUID} l0x{pr_bridge.BridgeID}");
+                fix.AppendLine($"prec pr_bridge d l0x{pr_bridge.PrimaryUID} l0x{pr_bridge.BridgedUID} l0x{pr_bridge.BridgeID}");
+                AddFix(fix.ToString());
+                return fix.ToString();
+            }
+
+            // This method is for removing a PR_BUTTON record
+            internal static string PR_BUTTON(string uid, string number) {
+                var fix = $"prec pr_button l l0x{uid} h0x{number}{Environment.NewLine}prec pr_button d l0x{uid} h0x{number}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for removing a PR_EXT record
+            internal static string PR_EXT(string digits) {
+                // Get the PR_EXT record
+                var pr_ext = Database.PR_EXTs.Find(a => a.Digits == digits);
+                
+                // Generate the fix command
+                var fix = $"prec pr_ext d {pr_ext.PRECFields()}";
+
+                // Add the fix to the list and return it
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for removing a PR_MOPORT record
+            internal static string PR_MOPORT(string port) {
+                // Generate the fix line, add it to the list, and return it
+                var fix = $"prec pr_moport d l0 l0 l0x{port}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for removing a PR_PORT_UID record
+            internal static string PR_PORT_UID(string port) {
+                // Generate the fix line
+                var fix = $"prec pr_port_uid d l0x{port}";
+
+                // Add the fix to the list and return it
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for removing a PR_ST_CPS record
+            internal static string PR_ST_CPS(string uid) {
+                // Create the fix, add it to the list, and return it
+                var fix = new StringBuilder();
+                fix.AppendLine($"prec pr_st_cps l l0x{uid}");
+                fix.AppendLine($"prec pr_st_cps d l0x{uid}");
+                AddFix(fix.ToString());
+                return fix.ToString();
+            }
+
+            // This method is for removing a PR_XMAP record
+            internal static string PR_XMAP(PR_XMAP pr_xmap) {
+                // Split the PREC line, create the fix, add it to the list, and return it
+                var split = pr_xmap.PREC[0].Split(' ');
+                var fix = $"prec pr_xmap d l0x{split[1]} l0x{split[2]} l0x{split[3]} l0x{split[4]} l0x{split[5]} l0x{split[6]}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is for removing a PR_OPT_STN record
+            internal static string PR_OPT_STN(PR_OPT_STN pr_opt_stn) {
+                // Split the PREC line, create the fix, add it to the list, and return it
+                var split = pr_opt_stn.PREC[0].Split(' ');
+                var fix = $"prec pr_opt_stn d l0x{split[1]} l0x{split[2]} l0x{split[3]}";
+                AddFix(fix);
+                return fix;
+            }
+
+            internal static string PR_FEXT(PR_FEXT pr_fext) {
+                var split = pr_fext.PREC[0].Split(' ');
+                var fix = $"prec pr_fext d l0x{split[1]} l0x{split[2]} l0x{split[3]}";
+                AddFix(fix);
+                return fix;
+            }
+        }
+
+        // Class of methods used for generating update commands
+        internal static class Update {
+            // This method will update a PR_AMW record
+            internal static string PR_AMW(PR_AMW pr_amw) {
+                var fields = pr_amw.PREC[0].Split(' ');
+                var fix = $"prec pr_amw d l0x{fields[1]} l0x{fields[2]} l0x{fields[3]}{Environment.NewLine}";
+                var highbit = pr_amw.IsMWI ? "0" : "8";     // We are reversing what is already there
+                fields[3] = highbit + fields[3].Remove(0, 1);
+                fix += $"prec pr_amw a l0x{fields[1]} l0x{fields[2]} l0x{fields[3]}";
+                AddFix(fix);
+                return fix;
+            }
+
+            internal static string PR_AMW_REMOVE(PR_AMW pr_amw) {
+                var fields = pr_amw.PREC[0].Split(' ');
+                var fix = $"prec pr_amw d l0x{fields[1]} l0x{fields[2]} l0x{fields[3]}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method will update a PR_ST_CPS record
+            internal static string PR_ST_CPS(string uid) {
+                // Declare a variable for storing the fix
+                var fix = "";
+
+                // Get the port
+                var port = Database.PR_PORT_UIDs.Find(a => a.UID == uid);
+
+                // Make sure we have a valid port
+                if (port != null) {
+                    fix = $"prec pr_st_cps l l0x{uid}{Environment.NewLine}prec pr_st_cps w l0x{uid} l0x{port.Port} l0x0 l0x0 l0x0";
+                    AddFix(fix);
+                } else {
+                    var pr_stn = Database.PR_STNs.Find(a => a.UID == uid);
+                    if (pr_stn.IsIP()) {
+                        fix = Add.NewIPPort(uid);
+                    } else {
+                        fix = $"** UNABLE TO ASSIGN NEW DCP PORT AUTOMATICALLY **{Environment.NewLine}** MANUAL FIX REQUIRED **";
+                        Audits.ManualFixes++;
+                    }
+                }
+                
+                return fix;
+            }
+
+            // This method will update a PR_ST_CPS record with a specific port
+            internal static string PR_ST_CPS(string uid, string port) {
+                // Declare a variable for storing the fix
+                var fix = "";
+                fix = $"prec pr_st_cps l l0x{uid}{Environment.NewLine}prec pr_st_cps w l0x{uid} l0x{port} l0x0 l0x0 l0x0";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method will update a PR_PORT_UID record
+            internal static string PR_PORT_UID(string port, string uid) {
+                // Create the fix line, add it to the list, and return it
+                var fix = $"prec pr_port_uid w l0x{port} l0x{uid}";
+                AddFix(fix);
+                return fix;
+            }
+
+            // This method is used to update a PR_FEXT record
+            internal static string PR_FEXT(string uid) {
+                // Get the PR_EXT record, create the fix, add it to the list, and return it
+                var pr_ext = Database.PR_EXTs.Find(a => a.UID == uid);
+                var split = pr_ext.PREC[0].Split(' ');
+                var fix = $"prec pr_fext w l0x{split[1]} l0x{split[2]} l0x{split[3]} l0x{split[4]}";
+                AddFix(fix);
+                return fix;
+            }
+        }
+    }
+}
+
+
+====================================================================
+FILE: Modules\LabStager.cs
+====================================================================
+
+/*
+ * Auditor3 :: LabStager
+ * 
+ * This class defines the process that stages a lab.
+ * 
+ * Auditor3 is developed and maintained by David McNutt
+ * 
+ */
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
+using Renci.SshNet;
+
+namespace Auditor3 {
+    internal static class LabStager {
+        internal static string CMRelease;
+        internal static string IP;
+        internal static bool Patching;
+        internal static string Patch;
+        internal static bool LoadingXLN;
+        internal static string XLNFile;
+        internal static bool LocalXLNFile;
+        internal static bool XLNBackup;
+
+        private static LabStagerConnection _lab;
+        private static ShellStream _shell;
+
+        internal static string ReleaseString;
+        internal static string DetectedRelease;
+        internal static string PatchString;
+        internal static string PatchNumber;
+        internal static List<string> DeactivatedPatches;
+
+        internal static string ToolsAFilename;
+
+        // Method for initializing the process
+        internal static void Initialize() {
+            CMRelease = "";
+            IP = "";
+            Patching = false;
+            Patch = "";
+            LoadingXLN = false;
+            XLNFile = "";
+            LocalXLNFile = false;
+            XLNBackup = false;
+            _lab = null;
+            ReleaseString = "";
+            DetectedRelease = "";
+            PatchString = "";
+            PatchNumber = "";
+            DeactivatedPatches = new List<string>();
+        }
+
+        // Method for starting the process
+        internal static void Start() {
+            // Set the state/process, set the start time, and add a status message
+            Globals.STATE = State.RUNNING;
+            Globals.PROCESS = Process.STAGELAB;
+            Globals.START_TIME = DateTime.Now;
+            Globals.GUI.AddStatus("Lab Stager is starting");
+
+            try {
+                Run();
+            } catch (Exception error) {
+                Globals.GUI.Error("An exception occured while staging the lab", error);
+            }
+
+            Globals.GUI.AddOutput("");
+
+            // Get the runtime and add an output message
+            var runtime = (DateTime.Now - Globals.START_TIME).TotalSeconds;
+            Globals.GUI.AddOutput($"Lab staged in {runtime} seconds");
+
+            // Write the report
+            var output = Globals.GUI.GetOutput();
+            var report = Globals.REPORT("labstager");
+            var writer = new StreamWriter(report);
+            writer.Write(output);
+            writer.Close();
+
+            Globals.GUI.AddStatus($"Lab Stager report generated at {report}");
+
+            _lab.Disconnect();
+            _lab = null;
+            Globals.GUI.Idle();
+        }
+
+        // Method for running the process
+        private static void Run() {
+            // Add the header to the report
+            Globals.GUI.AddOutput($"Lab Stager v{Globals.VERSION()}");
+            Globals.GUI.AddOutput("");
+            Globals.GUI.AddOutput($"CM     : {CMRelease}");
+            Globals.GUI.AddOutput($"IP     : {IP}");
+            Globals.GUI.AddOutput($"XLN    : {LoadingXLN}");
+            Globals.GUI.AddOutput($"BACKUP : {XLNBackup}");
+            Globals.GUI.AddOutput($"FILE   : {XLNFile}");
+            Globals.GUI.AddOutput($"PATCH  : {Patching}");
+            Globals.GUI.AddOutput($"PATCH# : {Patch}");
+            Globals.GUI.AddOutput("");
+
+            // Drop the CM connection, just in case someone is connected to a live
+            // CM and thinks this will move the Auditor's main connection, which it
+            // won't, as we use a specific connection to avoid any accidental
+            // customer system impacts
+            if (Globals.CM.Connected()) Globals.CM.Disconnect();
+
+            // Create a connection to the lab
+            _lab = new LabStagerConnection();
+            if (!_lab.Connect(IP)) return;
+
+            _shell = _lab.Shell();
+            if (_shell == null) {
+                Globals.GUI.Error("Failed to obtain shell");
+            }
+
+            // Handle the swversion
+            HandleSwversion();
+
+            var otherpatches = "";
+            foreach (var patch in DeactivatedPatches) otherpatches += $"{patch}  ";
+
+            Globals.GUI.AddOutput($"RELEASE STRING      : {ReleaseString}");
+            Globals.GUI.AddOutput($"DETECTED RELEASE    : {DetectedRelease}");
+            Globals.GUI.AddOutput($"PATCH STRING        : {PatchString}");
+            Globals.GUI.AddOutput($"PATCH NUMBER        : {PatchNumber}");
+            Globals.GUI.AddOutput($"DEACTIVATED PATCHES : {otherpatches}");
+            Globals.GUI.AddOutput("");
+
+            // Make sure the CM version is correct
+            if (DetectedRelease != CMRelease) {
+                Globals.GUI.Error("Detected CM release on lab does not match expected release");
+                return;
+            }
+
+            SetMOTD();
+            if (Patching) HandlePatching();
+            if (LoadingXLN) HandleLoadingXLN();
+        }
+
+        // Method for handling the swversion
+        private static void HandleSwversion() {
+            Globals.GUI.AddStatus("Processing swversion");
+            var swversion = _lab.Swversion();
+            var split = swversion.Split('\n');
+            foreach (var line in split) {
+                if (line.Contains("CM Reports as")) {
+                    ReleaseString = line.Split(' ').Where(a => !string.IsNullOrEmpty(a)).ToArray()[3];
+                    ProcessReleaseString();
+                } else if (line.Contains("activated") && !line.Contains("hot") && !line.Contains("VMWT") &&
+                    !line.Contains("KERNEL") && !line.Contains("PLAT")) {
+                    PatchString = line.Split(' ')[0];
+                    PatchNumber = PatchString.Split('-')[1];
+                } else if (line.Contains("unpacked") && !line.Contains("hot") && !line.Contains("VMWT") &&
+                    !line.Contains("KERNEL") && !line.Contains("PLAT")) {
+                    var patch = line.Split(' ')[0];
+                    DeactivatedPatches.Add(patch);
+                }
+            }
+        }
+
+        // Method for converting the release string
+        private static void ProcessReleaseString() {
+            switch (ReleaseString) {
+                case "R016x.03.0.141.0":
+                    DetectedRelease = "6.3";
+                    break;
+
+                case "R017x.00.0.441.0":
+                    DetectedRelease = "7.0";
+                    break;
+
+                case "R017x.01.0.532.0":
+                    DetectedRelease = "7.1";
+                    break;
+
+                case "R018x.00.0.822.0":
+                    DetectedRelease = "8.0";
+                    break;
+
+                case "R018x.01.0.890.0":
+                    DetectedRelease = "8.1";
+                    break;
+
+                default:
+                    DetectedRelease = "";
+                    break;
+            }
+        }
+
+        // Method for handling loading the XLN file
+        private static void HandleLoadingXLN() {
+            Globals.GUI.AddStatus("Processing loading XLN");
+
+            Globals.GUI.AddOutput("LAB XLN STAGING");
+            Globals.GUI.AddOutput("===============");
+            Globals.GUI.AddOutput("");
+
+            bool success;
+
+            if (LocalXLNFile) success = CopyLocalXLN();
+            else success = CopyToolsAXLN();
+
+            if (!success) return;
+
+            if (XLNBackup) success = ProcessXLNBackup();
+            else success = ProcessXLN();
+
+            if (!success) return;
+
+            Globals.GUI.AddOutput("-Performing reset system 4 to load translations");
+            _shell.WriteLine("/opt/ecs/sbin/drestart 1 4");
+            WaitForCM();
+        }
+
+        // Method for copying the XLN from the local PC
+        private static bool CopyLocalXLN() {
+            if (!File.Exists(XLNFile)) {
+                Globals.GUI.Error($"File {XLNFile} does not exist");
+                return false;
+            }
+
+            Globals.GUI.AddOutput($"-Transferring XLN file {XLNFile} from local PC");
+
+            var filename = XLNFile.Split('\\').Last();
+            ToolsAFilename = $"/var/home/init/{filename}";
+            return _lab.SendFile(XLNFile, ToolsAFilename);
+        }
+
+        // Method for copying the XLN from ToolsA
+        private static bool CopyToolsAXLN() {
+            Globals.GUI.AddOutput($"-Transferring XLN file {XLNFile} from ToolsA");
+
+            var filename = XLNFile.Split('/').Last();
+            ToolsAFilename = $"/var/home/init/{filename}";
+
+            var shellReader = new StreamReader(_shell);
+            var shellWriter = new StreamWriter(_shell);
+
+            shellWriter.AutoFlush = true;
+
+            // Flush two lines
+            shellWriter.WriteLine();
+            shellWriter.WriteLine();
+
+            var cmd = $"/usr/bin/scp {Globals.USER_DATA.ToolsAUsername}@135.11.60.87:{XLNFile} {ToolsAFilename}";
+            Globals.GUI.AddOutput(cmd);
+
+            shellWriter.WriteLine(cmd);
+            var first = _shell.Expect(new Regex("Password:|Are you sure you want to continue connecting"), new TimeSpan(0, 0, 10));
+            if (string.IsNullOrEmpty(first)) {
+                Globals.GUI.Error("Failed to authenticate scp to ToolsA");
+                return false;
+            }
+
+            if (first.Contains("Are you sure you want to continue connecting")) {
+                shellWriter.WriteLine("yes");
+                var recheck = _shell.Expect("Password:");
+                if (string.IsNullOrEmpty(recheck)) {
+                    Globals.GUI.Error("Failed to authenticate scp to ToolsA");
+                    return false;
+                }
+            }
+
+            shellWriter.WriteLine(Globals.USER_DATA.ToolsAPassword);
+            var second = _shell.Expect("100%", new TimeSpan(0, 2, 0));
+            if (string.IsNullOrEmpty(second)) {
+                Globals.GUI.Error("Failed to transfer file from ToolsA");
+                return false;
+            }
+
+            return true;
+        }
+
+        // Method for processing an uploaded XLN
+        private static bool ProcessXLN() {
+            Globals.GUI.AddOutput($"-Processing uploaded XLN {ToolsAFilename}");
+
+            if (ToolsAFilename.EndsWith(".gz")) {
+                Globals.GUI.AddOutput($"-Running 'gunzip' on uploaded file");
+                _lab.GUnZipFile(ToolsAFilename);
+                ToolsAFilename = ToolsAFilename.Substring(0, ToolsAFilename.Length - 3);
+            }
+
+            CopyXLNToDefty();
+
+            return true;
+        }
+
+        // Method for processing an uploaded backup
+        private static bool ProcessXLNBackup() {
+            Globals.GUI.AddOutput($"-Processing uploaded backup {ToolsAFilename}");
+
+            var filename = ToolsAFilename.Split('/').Last();
+            var directory = $"/var/home/init/{Globals.USER_DATA.ToolsAUsername.ToLower()}_{DateTime.Now.ToString("MMdd_HHmm")}/";
+
+            Globals.GUI.AddOutput($"-Creating directory {directory}");
+            _lab.CreateDirectory(directory);
+
+            Globals.GUI.AddOutput("-Copying backup to new directory");
+            _lab.CopyFile(ToolsAFilename, $"{directory}{filename}");
+            ToolsAFilename = directory + filename;
+
+            Globals.GUI.AddOutput("-Extracting backup");
+            _lab.ExtractCompressedTAR(ToolsAFilename, directory);
+
+            ToolsAFilename = $"{directory}etc/opt/defty/xln1";
+
+            CopyXLNToDefty();
+
+            return true;
+        }
+
+        // Method for switching to sroot to copy XLN file in place
+        private static bool CopyXLNToDefty() {
+            Globals.GUI.AddOutput("-Switching to sroot account");
+
+            var shellReader = new StreamReader(_shell);
+            var shellWriter = new StreamWriter(_shell);
+
+            shellWriter.AutoFlush = true;
+
+            // Flush two lines
+            shellWriter.WriteLine();
+            shellWriter.WriteLine();
+
+            if (!GoSroot(shellWriter)) return false;
+
+            Globals.GUI.AddOutput("-Copying XLN file to /etc/opt/defty/xln1");
+            shellWriter.WriteLine($"/bin/cp {ToolsAFilename} /etc/opt/defty/xln1");
+            shellWriter.WriteLine("y");
+            Thread.Sleep(2000);
+            Globals.GUI.AddOutput("-Leaving sroot account");
+            shellWriter.WriteLine("exit");
+
+            return true;
+        }
+
+        // Method for handling patching
+        private static void HandlePatching() {
+            Globals.GUI.AddStatus("Processing patching");
+
+            Globals.GUI.AddOutput("LAB PATCH STAGING");
+            Globals.GUI.AddOutput("=================");
+            Globals.GUI.AddOutput("");
+
+            if (PatchNumber == Patch) {
+                Globals.GUI.AddOutput("-Current patch already matches requested patch");
+            } else {
+                if (!string.IsNullOrEmpty(PatchNumber)) {
+                    Globals.GUI.AddOutput("-Lab has patch that needs to be deactivated");
+                    if (!DeactivatePatch()) return;
+                    if (!WaitForCM()) return;
+                }
+
+                var check = "";
+                foreach (var patch in DeactivatedPatches) {
+                    var number = patch.Split('-')[1];
+                    if (number == Patch) check = patch;
+                }
+                if (!string.IsNullOrEmpty(check)) {
+                    Globals.GUI.AddOutput("-Requested patch exists on system");
+                    ActivatePatch(check);
+                    WaitForCM();
+                } else {
+                    Globals.GUI.AddOutput("-Requested patch does not exist on system");
+                    DownloadPatch();
+                    if (!UnpackPatch()) return;
+                    HandleSwversion();
+                    foreach (var patch in DeactivatedPatches) {
+                        var number = patch.Split('-')[1];
+                        if (number == Patch) check = patch;
+                    }
+                    if (check == null) {
+                        Globals.GUI.Error("Unexpected error in detecting unpacked patch");
+                        return;
+                    }
+                    ActivatePatch(check);
+                    WaitForCM();
+                }
+            }
+
+            Globals.GUI.AddOutput("");
+        }
+
+        // Method for deactivating a patch
+        private static bool DeactivatePatch() {
+            Globals.GUI.AddOutput($"-Deactivating patch {PatchString}");
+
+            var shellReader = new StreamReader(_shell);
+            var shellWriter = new StreamWriter(_shell);
+
+            shellWriter.AutoFlush = true;
+
+            // Flush two lines
+            shellWriter.WriteLine();
+            shellWriter.WriteLine();
+
+            shellWriter.WriteLine($"/usr/bin/sudo update_deactivate {PatchString}");
+            var first = _shell.Expect("will cause a restart. Continue? [Yn]:", new TimeSpan(0, 0, 30));
+            if (string.IsNullOrEmpty(first)) {
+                Globals.GUI.Error("Failed to start patch activation");
+                return false;
+            }
+
+            shellWriter.WriteLine("y");
+
+            var second = _shell.Expect("Successfully Deactivated", new TimeSpan(0, 5, 0));
+            if (string.IsNullOrEmpty(second)) {
+                Globals.GUI.Error("Failed to activate patch");
+                return false;
+            }
+
+            Globals.GUI.AddOutput($"-Successfully deactivated patch {PatchString}");
+            return true;
+        }
+
+        // Method for activating a patch
+        private static bool ActivatePatch(string patch) {
+            Globals.GUI.AddOutput($"-Activating patch {patch}");
+
+            var shellReader = new StreamReader(_shell);
+            var shellWriter = new StreamWriter(_shell);
+
+            shellWriter.AutoFlush = true;
+
+            // Flush two lines
+            shellWriter.WriteLine();
+            shellWriter.WriteLine();
+
+            shellWriter.WriteLine($"/usr/bin/sudo update_activate {patch}");
+
+            var first = _shell.Expect("will cause a restart. Continue? [Yn]:", new TimeSpan(0, 0, 30));
+            if (string.IsNullOrEmpty(first)) {
+                Globals.GUI.Error("Failed to start patch activation");
+                return false;
+            }
+
+            shellWriter.WriteLine("y");
+            var second = _shell.Expect("Successfully Activated", new TimeSpan(0, 5, 0));
+            if (string.IsNullOrEmpty(second)) {
+                Globals.GUI.Error("Failed to activate patch");
+                return false;
+            }
+
+            Globals.GUI.AddOutput($"-Successfully activated patch {patch}");
+            return true;
+        }
+
+        // Method for downloading the patch
+        private static void DownloadPatch() {
+            Globals.GUI.AddOutput($"-Downloading patch {Patch}");
+            var patch = Globals.CM_PATCHES.Find(a => a.Patch == Patch);
+            _lab.Wget(patch.URL, $"/var/home/init/{GetFilename(patch.URL)}");
+        }
+
+        // Method for unpacking the patch
+        private static bool UnpackPatch() {
+            Globals.GUI.AddOutput($"-Unpacking patch {Patch}");
+            var patch = Globals.CM_PATCHES.Find(a => a.Patch == Patch);
+            var filename = GetFilename(patch.URL);
+
+            var shellReader = new StreamReader(_shell);
+            var shellWriter = new StreamWriter(_shell);
+
+            shellWriter.AutoFlush = true;
+
+            // Flush two lines
+            shellWriter.WriteLine();
+            shellWriter.WriteLine();
+
+            shellWriter.WriteLine($"/usr/bin/sudo update_unpack /var/home/init/{filename}");
+            var check = _shell.Expect("unpacked successfully", new TimeSpan(0, 2, 0));
+            if (string.IsNullOrEmpty(check)) {
+                Globals.GUI.Error("Failed to unpack patch");
+                return false;
+            }
+
+            Globals.GUI.AddOutput($"-Successfully unpacked patch {filename}");
+            return true;
+        }
+
+        // Method for waiting for CM to come back up after patch activate/deactivate
+        private static bool WaitForCM() {
+            Globals.GUI.AddOutput("-Waiting for CM to be in UP state");
+            var start = DateTime.Now;
+            var done = false;

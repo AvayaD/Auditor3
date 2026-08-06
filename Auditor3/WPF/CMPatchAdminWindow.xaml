@@ -1,7 +1,8 @@
 ﻿<Window x:Class="Auditor3.CMPatchAdminWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d"
-        Title="CM Patch Admin" SizeToContent="WidthAndHeight">
+        Title="CM Patch Admin" SizeToContent="WidthAndHeight"
+        Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid Style="{StaticResource StandardGrid}">
         <StackPanel Style="{StaticResource StandardStackPanel}" Orientation="Vertical">
             <StackPanel Style="{StaticResource StandardStackPanel}">
@@ -16,9 +17,13 @@
                 <Button Style="{StaticResource StandardButton}" Content="ADD" Click="Click_Add" />
             </StackPanel>
             <StackPanel Style="{StaticResource StandardStackPanel}">
-                <ListView Style="{StaticResource StandardListView}" Width="700" Height="500" Name="Patches">
+                <!-- UPDATED LISTVIEW -->
+                <ListView Style="{StaticResource ModernListView}" 
+                          ItemContainerStyle="{StaticResource ModernListViewItem}"
+                          AlternationCount="2"
+                          Width="700" Height="500" Name="Patches">
                     <ListView.View>
-                        <GridView>
+                        <GridView ColumnHeaderContainerStyle="{StaticResource ModernGridViewColumnHeader}">
                             <GridViewColumn Header="Version" Width="100" DisplayMemberBinding="{Binding Version}" />
                             <GridViewColumn Header="Patch" Width="100" DisplayMemberBinding="{Binding Patch}" />
                             <GridViewColumn Header="Release" Width="100" DisplayMemberBinding="{Binding Release}" />

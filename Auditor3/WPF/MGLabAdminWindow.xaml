@@ -1,7 +1,8 @@
 ﻿<Window x:Class="Auditor3.MGLabAdminWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d"
-        Title="MG Lab Admin" SizeToContent="WidthAndHeight">
+        Title="MG Lab Admin" SizeToContent="WidthAndHeight"
+        Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid Style="{StaticResource StandardGrid}">
         <StackPanel Style="{StaticResource StandardStackPanel}" Orientation="Vertical">
             <StackPanel Style="{StaticResource StandardStackPanel}">
@@ -12,9 +13,13 @@
                 <Button Style="{StaticResource StandardButton}" Content="ADD" Click="Click_Add" />
             </StackPanel>
             <StackPanel Style="{StaticResource StandardStackPanel}">
-                <ListView Style="{StaticResource StandardListView}" Width="325" Height="300" Name="Labs">
+                <!-- UPDATED LISTVIEW -->
+                <ListView Style="{StaticResource ModernListView}" 
+                          ItemContainerStyle="{StaticResource ModernListViewItem}"
+                          AlternationCount="2"
+                          Width="325" Height="300" Name="Labs">
                     <ListView.View>
-                        <GridView>
+                        <GridView ColumnHeaderContainerStyle="{StaticResource ModernGridViewColumnHeader}">
                             <GridViewColumn Header="Type" Width="75" DisplayMemberBinding="{Binding Version}" />
                             <GridViewColumn Header="IP" Width="150" DisplayMemberBinding="{Binding IP}" />
                             <GridViewColumn Header="Active" Width="75" DisplayMemberBinding="{Binding Active}" />

@@ -1,0 +1,12 @@
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
+# Exclude GitHub upgrade/assessment scenario data
+.github/upgrades/
+**/*.json
+**/*.csv
+
+# Exclude raw text dumps if you already have the C# source files included
+# (Uncomment the line below if ProjectCode_PartX.txt are duplicates of your .cs files)
+Auditor3/ProjectCode_Part*.txt
