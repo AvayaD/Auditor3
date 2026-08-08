@@ -524,18 +524,18 @@ namespace Auditor3
                 Audits.Checked++;
                 if (Globals.CANCEL) return;
 
-                // Run the audits
-                var result34 = AuditStrategies.AuditS34(pr_fext);
-                if (!result34.Passed)
-                {
-                    HandleAuditFailure("AUDIT-S34", result34.Message, result34.FixScript, result34.RequiresManualFix, AuditCategory.Station);
-                }
+                //// Run the audits
+                //var result34 = AuditStrategies.AuditS34(pr_fext);
+                //if (!result34.Passed)
+                //{
+                //    HandleAuditFailure("AUDIT-S34", result34.Message, result34.FixScript, result34.RequiresManualFix, AuditCategory.Station);
+                //}
 
-                var result35 = AuditStrategies.AuditS35(pr_fext);
-                if (!result35.Passed)
-                {
-                    HandleAuditFailure("AUDIT-S35", result35.Message, result35.FixScript, result35.RequiresManualFix, AuditCategory.Station);
-                }
+                //var result35 = AuditStrategies.AuditS35(pr_fext);
+                //if (!result35.Passed)
+                //{
+                //    HandleAuditFailure("AUDIT-S35", result35.Message, result35.FixScript, result35.RequiresManualFix, AuditCategory.Station);
+                //}
             }
 
             // Set values for the PR_BUTTON loop
