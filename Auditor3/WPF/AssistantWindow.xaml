@@ -1,0 +1,83 @@
+<Window x:Class="Auditor3.AssistantWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Auditor3 Assistant"
+        Width="900"
+        Height="700"
+        MinWidth="650"
+        MinHeight="500"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource ThemeBackgroundBrush}">
+
+    <Grid Style="{StaticResource StandardGrid}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Label Grid.Row="0"
+               Style="{StaticResource StandardLabel}"
+               Content="ADVISORY AI RESPONSE — VERIFY AGAINST AUDITOR3 RESULTS" />
+
+        <GroupBox Grid.Row="1"
+                  Header="Question"
+                  Margin="4">
+            <TextBox x:Name="QuestionBox"
+                     Style="{StaticResource FillTextBox}"
+                     Height="75"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto" />
+        </GroupBox>
+
+        <Grid Grid.Row="2"
+              Margin="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Label Grid.Row="0"
+                   Style="{StaticResource StandardLabel}"
+                   Content="Response" />
+
+            <TextBox x:Name="ResponseBox"
+                     Grid.Row="1"
+                     Style="{StaticResource FillTextBox}"
+                     IsReadOnly="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto" />
+        </Grid>
+
+        <Grid Grid.Row="3"
+              Margin="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="StatusText"
+                       Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Margin="8"
+                       Text="Ready." />
+
+            <Button x:Name="AskButton"
+                    Grid.Column="1"
+                    Style="{StaticResource StandardButton}"
+                    Content="ASK"
+                    Click="Click_Ask" />
+
+            <Button x:Name="CancelButton"
+                    Grid.Column="2"
+                    Style="{StaticResource StandardButton}"
+                    Content="CANCEL"
+                    Click="Click_Cancel"
+                    IsEnabled="False" />
+        </Grid>
+    </Grid>
+</Window>
