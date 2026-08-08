@@ -1,4 +1,5 @@
-﻿using Auditor3;
+﻿using System.Collections.Generic;
+using Auditor3;
 
 namespace Auditor3.Tests;
 
@@ -232,5 +233,106 @@ public class PrecLayoutParserTests
 
         Assert.Equal("p_uid", field.Name);
         Assert.Equal("0000971d", field.DecodedValue);
+    }
+
+    [Fact]
+    public void Build_PrExtContext_PreservesLayoutFieldsAndRawData()
+    {
+        var layout = new PrecLayout
+        {
+            PrecType = "PR_EXT",
+            StructureName = "pr_ext",
+            Release = "cm10.2",
+            SourceFile = "cm10.2/pr_ext.ptype",
+            TotalSize = 32,
+            Fields =
+            [
+                new PrecLayoutField
+                {
+                    Name = "no_digits",
+                    Type = "short",
+                    Offset = 0,
+                    Size = 2
+                },
+                new PrecLayoutField
+                {
+                    Name = "ext[8]",
+                    Type = "NYBLE",
+                    Offset = 2,
+                    Size = 8
+                },
+                new PrecLayoutField
+                {
+                    Name = "p_uid",
+                    Type = "UID",
+                    Offset = 12,
+                    Size = 4
+                }
+            ]
+        };
+
+        var fields = new List<PrecFieldValue>
+        {
+            new()
+            {
+                Name = "ext[8]",
+                Type = "NYBLE",
+                Offset = 2,
+                Size = 8,
+                RawValue = "8aa1",
+                DecodedValue = "1008",
+                DecodeStatus = "Decoded"
+            },
+            new()
+            {
+                Name = "p_uid",
+                Type = "UID",
+                Offset = 12,
+                Size = 4,
+                RawValue = "0000971d",
+                DecodedValue = "0000971d",
+                DecodeStatus = "Decoded"
+            }
+        };
+
+        const string rawPrec =
+            "PR_EXT 8aa10004 00000000 00000000 " +
+            "0000971d 00000000 0000ffff 01000000 00000000";
+
+        var builder = new PrecAnalysisContextBuilder();
+
+        var context = builder.Build(
+            layout,
+            fields,
+            rawPrec,
+            dumpSize: 32,
+            cmRelease: "cm10.2",
+            applicationVersion: "4.0d");
+
+        Assert.Equal("PR_EXT", context.PrecType);
+        Assert.Equal("pr_ext", context.StructureName);
+        Assert.Equal("cm10.2", context.CmRelease);
+        Assert.Equal("4.0d", context.ApplicationVersion);
+        Assert.Equal(32, context.CompiledSize);
+        Assert.Equal(32, context.DumpSize);
+        Assert.Equal("Match", context.RecordSizeStatus);
+        Assert.Equal(rawPrec, context.RawPrec);
+
+        Assert.Equal(2, context.Fields.Count);
+        Assert.Equal("1008", context.Fields[0].DecodedValue);
+        Assert.Equal("0000971d", context.Fields[1].DecodedValue);
+
+        var layoutEvidence = Assert.Single(
+            context.Evidence,
+            evidence => evidence.Type == "CompiledLayout");
+
+        Assert.Contains("Total size: 32 bytes", layoutEvidence.Content);
+        Assert.Contains("p_uid", layoutEvidence.Content);
+
+        var rawEvidence = Assert.Single(
+            context.Evidence,
+            evidence => evidence.Type == "RawPrec");
+
+        Assert.Equal(rawPrec, rawEvidence.Content);
     }
 }

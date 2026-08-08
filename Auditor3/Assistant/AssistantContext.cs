@@ -24,6 +24,17 @@ public sealed class AssistantContext
 
     public int? DumpSize { get; init; }
 
+    /// <summary>
+    /// The original raw PREC text, when policy permits retaining it.
+    /// </summary>
+    public string RawPrec { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Indicates whether the raw dump size matches the compiled layout size.
+    /// Expected values: Match, Mismatch, or Unknown.
+    /// </summary>
+    public string RecordSizeStatus { get; init; } = "Unknown";
+
     public IReadOnlyList<PrecFieldValue> Fields { get; init; } =
         Array.Empty<PrecFieldValue>();
 
