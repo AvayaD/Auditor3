@@ -125,4 +125,26 @@ public class PrecLayoutParserTests
         Assert.Equal(14, mode.BitOffset);
         Assert.Equal(2, mode.BitSize);
     }
+
+    [Fact]
+    public async Task DisabledAssistant_ReturnsDisabledResponse()
+    {
+        var service = new DisabledAssistantService();
+
+        var request = new AssistantRequest
+        {
+            Question = "Explain this record.",
+            CorrelationId = "test-correlation-id"
+        };
+
+        var response = await service.AskAsync(request);
+
+        Assert.False(response.Succeeded);
+        Assert.Equal(
+            "AI assistant is disabled.",
+            response.ErrorMessage);
+        Assert.Equal(
+            "test-correlation-id",
+            response.CorrelationId);
+    }
 }
