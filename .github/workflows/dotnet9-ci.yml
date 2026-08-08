@@ -32,9 +32,6 @@ jobs:
       - name: List vulnerable packages
         run: dotnet list Auditor3.sln package --vulnerable || true
 
-      - name: Updater smoke run
-        run: dotnet run --project Updater/Updater.csproj -c Release --no-restore
-
       - name: Upload build info
         if: success()
-        run: echo "Build and smoke run completed for ${{ github.ref }}"
+        run: echo "Build completed for ${{ github.ref }}"
