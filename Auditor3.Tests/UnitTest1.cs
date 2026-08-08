@@ -147,4 +147,90 @@ public class PrecLayoutParserTests
             "test-correlation-id",
             response.CorrelationId);
     }
+
+    [Fact]
+    public void AssistantRedactor_RedactsSensitiveEvidenceLines()
+    {
+        var redactor = new AssistantRedactor();
+
+        var context = new AssistantContext
+        {
+            PrecType = "PR_EXT",
+            Evidence =
+            [
+                new AssistantEvidence
+                {
+                    Type = "Test",
+                    Source = "test",
+                    Description = "Sensitive values",
+                    Content =
+                        "username: engineer\n" +
+                        "password: secret-value\n" +
+                        "Challenge: 12345\n" +
+                        "ordinary line"
+                }
+            ]
+        };
+
+        var result = redactor.Redact(context);
+
+        var evidence = Assert.Single(result.Evidence);
+
+        Assert.Contains("username: engineer", evidence.Content);
+        Assert.Contains("ordinary line", evidence.Content);
+        Assert.DoesNotContain("secret-value", evidence.Content);
+        Assert.DoesNotContain("Challenge: 12345", evidence.Content);
+        Assert.Contains("[REDACTED]", evidence.Content);
+    }
+
+    [Fact]
+    public void AssistantRedactor_PreservesStructuredContext()
+    {
+        var redactor = new AssistantRedactor();
+
+        var context = new AssistantContext
+        {
+            ApplicationVersion = "4.0d",
+            CmRelease = "cm10.2",
+            PrecType = "PR_EXT",
+            StructureName = "pr_ext",
+            HeaderFile = "dpm_prec.h",
+            StructureSourceLine = 1525,
+            CompiledSize = 32,
+            DumpSize = 32,
+            MappingDetails = ["DM_EXT -> PR_EXT"],
+            ProposedFixes = ["prec pr_ext d ..."],
+            Fields =
+            [
+                new PrecFieldValue
+                {
+                    Name = "p_uid",
+                    Type = "UID",
+                    Offset = 12,
+                    Size = 4,
+                    RawValue = "0000971d",
+                    DecodedValue = "0000971d",
+                    DecodeStatus = "Decoded"
+                }
+            ]
+        };
+
+        var result = redactor.Redact(context);
+
+        Assert.Equal(context.ApplicationVersion, result.ApplicationVersion);
+        Assert.Equal(context.CmRelease, result.CmRelease);
+        Assert.Equal(context.PrecType, result.PrecType);
+        Assert.Equal(context.StructureName, result.StructureName);
+        Assert.Equal(context.HeaderFile, result.HeaderFile);
+        Assert.Equal(context.StructureSourceLine, result.StructureSourceLine);
+        Assert.Equal(context.CompiledSize, result.CompiledSize);
+        Assert.Equal(context.DumpSize, result.DumpSize);
+        Assert.Equal(context.MappingDetails, result.MappingDetails);
+        Assert.Equal(context.ProposedFixes, result.ProposedFixes);
+
+        var field = Assert.Single(result.Fields);
+
+        Assert.Equal("p_uid", field.Name);
+        Assert.Equal("0000971d", field.DecodedValue);
+    }
 }
