@@ -2691,3 +2691,10 @@ The deterministic PREC analysis context milestone is complete when:
 - Documented testing requirements.
 - Documented future pull-request requirements.
 - Documented files to provide to future AI sessions.
+
+Mark deterministic context construction as completed.
+Document LocalAssistantService.
+Document WebUiAssistantService as an implemented adapter prototype.
+Update the test count and test files.
+State clearly that no WPF assistant UI is wired in.
+State that service-contract/security approval granted
