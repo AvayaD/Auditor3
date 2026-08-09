@@ -3,36 +3,49 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Auditor3 Assistant"
         Width="900"
-        Height="700"
+        Height="750"
         MinWidth="650"
-        MinHeight="500"
+        MinHeight="600"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource ThemeBackgroundBrush}">
 
     <Grid Style="{StaticResource StandardGrid}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="190" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="100" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Label Grid.Row="0"
                Style="{StaticResource StandardLabel}"
-               Content="ADVISORY AI RESPONSE — VERIFY AGAINST AUDITOR3 RESULTS" />
+               Content="ADVISORY AI RESPONSE - VERIFY AGAINST AUDITOR3 RESULTS" />
 
         <GroupBox Grid.Row="1"
-                  Header="Question"
+                  Header="Context Summary"
                   Margin="4">
-            <TextBox x:Name="QuestionBox"
+            <TextBox x:Name="ContextSummaryBox"
                      Style="{StaticResource FillTextBox}"
-                     Height="75"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto" />
+                     IsReadOnly="True"
+                     TextWrapping="NoWrap"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto" />
         </GroupBox>
 
-        <Grid Grid.Row="2"
+        <Label Grid.Row="2"
+               Style="{StaticResource StandardLabel}"
+               Content="Question" />
+
+        <TextBox x:Name="QuestionBox"
+                 Grid.Row="3"
+                 Style="{StaticResource FillTextBox}"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto" />
+
+        <Grid Grid.Row="4"
               Margin="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -52,7 +65,7 @@
                      HorizontalScrollBarVisibility="Auto" />
         </Grid>
 
-        <Grid Grid.Row="3"
+        <Grid Grid.Row="5"
               Margin="4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
