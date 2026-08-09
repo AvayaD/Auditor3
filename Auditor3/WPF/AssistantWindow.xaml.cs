@@ -1,8 +1,6 @@
 using System;
-using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 
 namespace Auditor3;
@@ -30,6 +28,9 @@ public partial class AssistantWindow : Window
             throw new ArgumentNullException(nameof(context));
 
         InitializeComponent();
+
+        ContextSummaryBox.Text =
+            AssistantContextSummaryFormatter.Format(_context);
     }
 
     private async void Click_Ask(
@@ -70,7 +71,7 @@ public partial class AssistantWindow : Window
             }
             else
             {
-                ResponseBox.Text = string.Empty;
+                ResponseBox.Clear();
                 StatusText.Text = string.IsNullOrWhiteSpace(
                     response.ErrorMessage)
                     ? "The assistant request failed."
@@ -79,12 +80,12 @@ public partial class AssistantWindow : Window
         }
         catch (OperationCanceledException)
         {
-            ResponseBox.Text = string.Empty;
+            ResponseBox.Clear();
             StatusText.Text = "Request cancelled.";
         }
         catch (Exception error)
         {
-            ResponseBox.Text = string.Empty;
+            ResponseBox.Clear();
             StatusText.Text =
                 $"Assistant request failed: {error.Message}";
         }
@@ -135,7 +136,7 @@ public partial class AssistantWindow : Window
         var output = new StringBuilder();
 
         output.AppendLine(
-            "ADVISORY AI RESPONSE — VERIFY AGAINST AUDITOR3 RESULTS");
+            "ADVISORY AI RESPONSE - VERIFY AGAINST AUDITOR3 RESULTS");
         output.AppendLine();
 
         output.AppendLine(response.Answer);
@@ -155,7 +156,7 @@ public partial class AssistantWindow : Window
         {
             output.AppendLine();
             output.AppendLine(
-                "⚠️ This response contains command-like text. " +
+                "[WARNING] This response contains command-like text. " +
                 "It is read-only advisory content and was not executed.");
         }
 
