@@ -1,9 +1,9 @@
-﻿<Window x:Class="Auditor3.MainWindow" 
+﻿<Window x:Class="Auditor3.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-        mc:Ignorable="d" 
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
         Closing="WindowClosing"
         Background="{DynamicResource ThemeBackgroundBrush}">
 
@@ -16,46 +16,131 @@
 
         <Menu Style="{StaticResource StandardMenu}" Grid.Row="0">
             <MenuItem Style="{StaticResource TopLevelMenuItemStyle}" Header="_File">
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_User Data" Click="Click_UserData" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="_User Data"
+                          Click="Click_UserData" />
                 <Separator />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="E_xit" Click="Click_Exit" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Name="WyldStallyn" Header="Wyld Stallyn Mode" 
-                          IsCheckable="True" IsChecked="False" Click="Click_WyldStallynMode" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="E_xit"
+                          Click="Click_Exit" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Name="WyldStallyn"
+                          Header="Wyld Stallyn Mode"
+                          IsCheckable="True"
+                          IsChecked="False"
+                          Click="Click_WyldStallynMode" />
             </MenuItem>
-            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}" Header="_Tools">
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Pull XLN" Name="PullXLNButton" Click="Click_PullXLN" IsEnabled="False" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Run Script (Local)" Name="RunLocalScriptButton" Click="Click_RunLocalScript" IsEnabled="False" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Run Script (ToolsA)" Name="RunToolsAScriptButton" Click="Click_RunToolsAScript" IsEnabled="False" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Script Generator" Click="Click_ScriptGenerator" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="Stage Lab" Name="StageLabButton" Click="Click_StageLab" IsEnabled="False" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="WEBASG TEST" Click="Click_WebASGTest" />
+
+            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}"
+                      Header="_Tools">
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="Pull XLN"
+                          Name="PullXLNButton"
+                          Click="Click_PullXLN"
+                          IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="Run Script (Local)"
+                          Name="RunLocalScriptButton"
+                          Click="Click_RunLocalScript"
+                          IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="Run Script (ToolsA)"
+                          Name="RunToolsAScriptButton"
+                          Click="Click_RunToolsAScript"
+                          IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="Script Generator"
+                          Click="Click_ScriptGenerator" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="Stage Lab"
+                          Name="StageLabButton"
+                          Click="Click_StageLab"
+                          IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="WEBASG TEST"
+                          Click="Click_WebASGTest" />
             </MenuItem>
-            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}" Header="DSCRIPTS">
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="jirasearchd" Name="JiraSearchdMenu" IsEnabled="False" Click="Click_JiraSearchd" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="findjira" Name="FindJiraMenu" IsEnabled="False" Visibility="Collapsed" Click="Click_FindJira" />
+
+            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}"
+                      Header="DSCRIPTS">
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="jirasearchd"
+                          Name="JiraSearchdMenu"
+                          IsEnabled="False"
+                          Click="Click_JiraSearchd" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="findjira"
+                          Name="FindJiraMenu"
+                          IsEnabled="False"
+                          Visibility="Collapsed"
+                          Click="Click_FindJira" />
             </MenuItem>
-            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}" Header="_Connections">
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_ToolsA">
-                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Connect" Name="ConnectToolsAMenu" Click="Click_ConnectToolsA" />
-                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Disconnect" Name="DisconnectToolsAMenu" Click="Click_DisconnectToolsA" />
+
+            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}"
+                      Header="_Connections">
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="_ToolsA">
+                    <MenuItem Style="{StaticResource StandardMenuItem}"
+                              Header="Connect"
+                              Name="ConnectToolsAMenu"
+                              Click="Click_ConnectToolsA" />
+                    <MenuItem Style="{StaticResource StandardMenuItem}"
+                              Header="Disconnect"
+                              Name="DisconnectToolsAMenu"
+                              Click="Click_DisconnectToolsA" />
                 </MenuItem>
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_DRCCD">
-                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Connect" Name="ConnectDRCCDMenu" Click="Click_ConnectDRCCD" />
-                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Disconnect" Name="DisconnectDRCCDMenu" Click="Click_DisconnectDRCCD" />
+
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="_DRCCD">
+                    <MenuItem Style="{StaticResource StandardMenuItem}"
+                              Header="Connect"
+                              Name="ConnectDRCCDMenu"
+                              Click="Click_ConnectDRCCD" />
+                    <MenuItem Style="{StaticResource StandardMenuItem}"
+                              Header="Disconnect"
+                              Name="DisconnectDRCCDMenu"
+                              Click="Click_DisconnectDRCCD" />
                 </MenuItem>
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_CM">
-                    <MenuItem Style="{StaticResource StandardMenuItem}" Header="Disconnect" Name="DisconnectCMMenu" Click="Click_DisconnectCM" />
+
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="_CM">
+                    <MenuItem Style="{StaticResource StandardMenuItem}"
+                              Header="Disconnect"
+                              Name="DisconnectCMMenu"
+                              Click="Click_DisconnectCM" />
                 </MenuItem>
             </MenuItem>
-            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}" Name="AdminMenu" Header="_Admin" Visibility="Collapsed">
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="CM Labs" Click="Click_CMLabAdmin" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="MG Labs" Click="Click_MGLabAdmin" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="CM Patches" Click="Click_CMPatchAdmin" />
+
+            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}"
+                      Name="AdminMenu"
+                      Header="_Admin"
+                      Visibility="Collapsed">
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="CM Labs"
+                          Click="Click_CMLabAdmin" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="MG Labs"
+                          Click="Click_MGLabAdmin" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="CM Patches"
+                          Click="Click_CMPatchAdmin" />
             </MenuItem>
-            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}" Header="_Help">
-                <MenuItem Style="{StaticResource StandardMenuItem}" Header="_PREC List" Click="Click_PRECList" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Name="LabsMenuItem" Header="_Labs" Click="Click_Labs" IsEnabled="False" />
-                <MenuItem Style="{StaticResource StandardMenuItem}" Name="ReinitLabInfo" Header="Reload Lab Info" Click="Click_ReinitLabInfo" IsEnabled="False" />
+
+            <MenuItem Style="{StaticResource TopLevelMenuItemStyle}"
+                      Header="_Help">
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Header="_PREC List"
+                          Click="Click_PRECList" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Name="LabsMenuItem"
+                          Header="_Labs"
+                          Click="Click_Labs"
+                          IsEnabled="False" />
+                <MenuItem Style="{StaticResource StandardMenuItem}"
+                          Name="ReinitLabInfo"
+                          Header="Reload Lab Info"
+                          Click="Click_ReinitLabInfo"
+                          IsEnabled="False" />
             </MenuItem>
         </Menu>
 
@@ -75,188 +160,491 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="1*" />
                 </Grid.RowDefinitions>
-                <Label Style="{StaticResource StandardLabel}" Content="-- DATA --" Grid.Row="0" />
-                <TextBox Style="{StaticResource FillTextBox}" Name="DataBox" IsReadOnly="False" Grid.Row="1" />
-                <Label Style="{StaticResource StandardLabel}" Content="-- STATUS --" Grid.Row="2" Margin="0,8,0,0" />
-                <TextBox Style="{StaticResource FillTextBox}" Name="StatusBox" IsReadOnly="True" Grid.Row="3" />
+
+                <Label Style="{StaticResource StandardLabel}"
+                       Content="-- DATA --"
+                       Grid.Row="0" />
+
+                <TextBox Style="{StaticResource FillTextBox}"
+                         Name="DataBox"
+                         IsReadOnly="False"
+                         Grid.Row="1" />
+
+                <Label Style="{StaticResource StandardLabel}"
+                       Content="-- STATUS --"
+                       Grid.Row="2"
+                       Margin="0,8,0,0" />
+
+                <TextBox Style="{StaticResource FillTextBox}"
+                         Name="StatusBox"
+                         IsReadOnly="True"
+                         Grid.Row="3" />
             </Grid>
 
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWE" />
+            <GridSplitter Grid.Column="1"
+                          Width="5"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          Cursor="SizeWE" />
 
             <Grid Grid.Column="2" Margin="8,0,8,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <Label Style="{StaticResource StandardLabel}" Name="OutputLabel" Content="-- OUTPUT --" Grid.Row="0" />
 
-                <!-- THE FIX IS HERE: Added IsReadOnlyCaretVisible="True" -->
-                <TextBox Style="{StaticResource FillTextBox}" Name="OutputBox" IsReadOnly="True" IsReadOnlyCaretVisible="True" Grid.Row="1" />
+                <Label Style="{StaticResource StandardLabel}"
+                       Name="OutputLabel"
+                       Content="-- OUTPUT --"
+                       Grid.Row="0" />
 
+                <TextBox Style="{StaticResource FillTextBox}"
+                         Name="OutputBox"
+                         IsReadOnly="True"
+                         IsReadOnlyCaretVisible="True"
+                         Grid.Row="1" />
             </Grid>
 
-            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWE" />
+            <GridSplitter Grid.Column="3"
+                          Width="5"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          Cursor="SizeWE" />
 
-            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="8,0,0,0">
+            <ScrollViewer Grid.Column="4"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Margin="8,0,0,0">
                 <StackPanel Orientation="Vertical">
-                    <Label Style="{StaticResource StandardLabel}" Content="-- CONTROLS --" />
+                    <Label Style="{StaticResource StandardLabel}"
+                           Content="-- CONTROLS --" />
 
                     <Grid Margin="0,4,0,4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Grid.Column="0">
-                            <RadioButton Style="{StaticResource StandardRadioButton}" Name="LiveMode" Content="LIVE" Click="Click_SetMode" GroupName="CorruptionMode" />
-                            <RadioButton Style="{StaticResource StandardRadioButton}" Name="LabMode" Content="LAB" Click="Click_SetMode" GroupName="CorruptionMode" />
-                            <RadioButton Style="{StaticResource StandardRadioButton}" Name="OfflineMode" Content="OFFLINE" Click="Click_SetMode" GroupName="CorruptionMode" IsChecked="True" />
-                        </StackPanel>
-                        <ToggleButton x:Name="DarkModeToggle" Content="🌙 Dark Mode" Grid.Column="1" 
-                            Click="Click_ToggleTheme"
-                            Style="{StaticResource ThemeToggleButton}" />
-                     </Grid>
 
-                    <StackPanel Style="{StaticResource StandardStackPanel}" Name="CorruptionLiveModeOptions" Visibility="Collapsed">
-                        <Label Style="{StaticResource StandardLabel}" Content="PORT" Width="60" />
-                        <TextBox Style="{StaticResource FixedTextBox}" Name="SitePort" />
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Left"
+                                    Grid.Column="0">
+                            <RadioButton Style="{StaticResource StandardRadioButton}"
+                                         Name="LiveMode"
+                                         Content="LIVE"
+                                         Click="Click_SetMode"
+                                         GroupName="CorruptionMode" />
+                            <RadioButton Style="{StaticResource StandardRadioButton}"
+                                         Name="LabMode"
+                                         Content="LAB"
+                                         Click="Click_SetMode"
+                                         GroupName="CorruptionMode" />
+                            <RadioButton Style="{StaticResource StandardRadioButton}"
+                                         Name="OfflineMode"
+                                         Content="OFFLINE"
+                                         Click="Click_SetMode"
+                                         GroupName="CorruptionMode"
+                                         IsChecked="True" />
+                        </StackPanel>
+
+                        <ToggleButton x:Name="DarkModeToggle"
+                                      Content="🌙 Dark Mode"
+                                      Grid.Column="1"
+                                      Click="Click_ToggleTheme"
+                                      Style="{StaticResource ThemeToggleButton}" />
+                    </Grid>
+
+                    <StackPanel Style="{StaticResource StandardStackPanel}"
+                                Name="CorruptionLiveModeOptions"
+                                Visibility="Collapsed">
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="PORT"
+                               Width="60" />
+                        <TextBox Style="{StaticResource FixedTextBox}"
+                                 Name="SitePort" />
                     </StackPanel>
-                    <StackPanel Style="{StaticResource StandardStackPanel}" Name="CorruptionLabModeOptions" Visibility="Collapsed">
-                        <Label Style="{StaticResource StandardLabel}" Content="IP" Width="60" />
-                        <TextBox Style="{StaticResource FixedTextBox}" Name="LabIP" TextChanged="LabIPChanged" />
+
+                    <StackPanel Style="{StaticResource StandardStackPanel}"
+                                Name="CorruptionLabModeOptions"
+                                Visibility="Collapsed">
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="IP"
+                               Width="60" />
+                        <TextBox Style="{StaticResource FixedTextBox}"
+                                 Name="LabIP"
+                                 TextChanged="LabIPChanged" />
+                    </StackPanel>
+
+                    <Label Style="{StaticResource StandardLabel}"
+                           Content="-- ASSISTANT --" />
+
+                    <CheckBox x:Name="AssistantEnabledCheck"
+                              Style="{StaticResource FixedCheckBox}"
+                              IsChecked="False"
+                              IsEnabled="False"
+                              ToolTip="Enable AI assistance after a valid PREC context is selected.">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       Text="{StaticResource IconAssistant}"
+                                       Foreground="{DynamicResource ThemeTextBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0" />
+
+                            <TextBlock Text="Enable AI Assistance"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </CheckBox>
+
+                    <StackPanel x:Name="AssistantOptionsPanel"
+                                Orientation="Vertical"
+                                Visibility="Collapsed">
+
+                        <StackPanel Style="{StaticResource StandardStackPanel}">
+                            <Label Style="{StaticResource StandardLabel}"
+                                   Content="MODE"
+                                   Width="60" />
+
+                            <ComboBox x:Name="AssistantModeBox"
+                                      Style="{StaticResource FixedComboBox}"
+                                      Width="150"
+                                      SelectedIndex="0"
+                                      IsEnabled="False">
+                                <ComboBoxItem Content="Local" />
+                                <ComboBoxItem Content="WebAI" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <TextBlock x:Name="AssistantStatusText"
+                                   Margin="8,0,8,6"
+                                   Foreground="{DynamicResource ThemeTextBrush}"
+                                   Text="No PREC context selected"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
 
                     <StackPanel Style="{StaticResource StandardStackPanel}">
-                        <Label Style="{StaticResource  StandardLabel}" Content="RELEASE" Width="60" />
-                        <ComboBox Style="{StaticResource FixedComboBox}" Name="CMReleaseBox" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="RELEASE"
+                               Width="60" />
+                        <ComboBox Style="{StaticResource FixedComboBox}"
+                                  Name="CMReleaseBox" />
                     </StackPanel>
 
                     <Label Height="10" />
-                    <Label Style="{StaticResource StandardLabel}" Content="-- AUDITS --" />
 
-                    <CheckBox Style="{StaticResource FixedCheckBox}" Name="StationAuditsCheck" IsChecked="True">
+                    <Label Style="{StaticResource StandardLabel}"
+                           Content="-- AUDITS --" />
+
+                    <CheckBox Style="{StaticResource FixedCheckBox}"
+                              Name="StationAuditsCheck"
+                              IsChecked="True">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconDevice}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="STATIONS" VerticalAlignment="Center"/>
+                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       Text="{StaticResource IconDevice}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0" />
+                            <TextBlock Text="STATIONS"
+                                       VerticalAlignment="Center" />
                         </StackPanel>
                     </CheckBox>
-                    <CheckBox Style="{StaticResource FixedCheckBox}" Name="TrunkAuditsCheck">
+
+                    <CheckBox Style="{StaticResource FixedCheckBox}"
+                              Name="TrunkAuditsCheck">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconConnection}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="TRUNKS" VerticalAlignment="Center"/>
+                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       Text="{StaticResource IconConnection}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0" />
+                            <TextBlock Text="TRUNKS"
+                                       VerticalAlignment="Center" />
                         </StackPanel>
                     </CheckBox>
-                    <CheckBox Style="{StaticResource FixedCheckBox}" Name="AnnouncementAuditsCheck">
+
+                    <CheckBox Style="{StaticResource FixedCheckBox}"
+                              Name="AnnouncementAuditsCheck">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconVolume}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="ANNOUNCEMENTS" VerticalAlignment="Center"/>
+                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       Text="{StaticResource IconVolume}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0" />
+                            <TextBlock Text="ANNOUNCEMENTS"
+                                       VerticalAlignment="Center" />
                         </StackPanel>
                     </CheckBox>
 
                     <Label Height="10" />
 
-                    <Label Style="{StaticResource StandardLabel}" Content="-- ACTIONS --" />
-                    <StackPanel Orientation="Vertical" HorizontalAlignment="Stretch">
-                        <Button Style="{StaticResource StandardButton}" Name="CollectButton" IsEnabled="False" Click="Click_Collect">
+                    <Label Style="{StaticResource StandardLabel}"
+                           Content="-- ACTIONS --" />
+
+                    <StackPanel Orientation="Vertical"
+                                HorizontalAlignment="Stretch">
+                        <Button Style="{StaticResource StandardButton}"
+                                Name="CollectButton"
+                                IsEnabled="False"
+                                Click="Click_Collect">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconCollect}" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="14"/>
-                                <TextBlock Text="COLLECT" VerticalAlignment="Center"/>
+                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="{StaticResource IconCollect}"
+                                           Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="14" />
+                                <TextBlock Text="COLLECT"
+                                           VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource StandardButton}" Name="AuditButton" IsEnabled="False" ToolTip="Audit the currently loaded precs for issues" Click="Click_Audit">
+
+                        <Button Style="{StaticResource StandardButton}"
+                                Name="AuditButton"
+                                IsEnabled="False"
+                                ToolTip="Audit the currently loaded precs for issues"
+                                Click="Click_Audit">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconAudit}" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="14"/>
-                                <TextBlock Text="AUDIT" VerticalAlignment="Center"/>
+                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="{StaticResource IconAudit}"
+                                           Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="14" />
+                                <TextBlock Text="AUDIT"
+                                           VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource StandardButton}" Name="RepairButton" IsEnabled="False" Click="Click_Repair">
+
+                        <Button Style="{StaticResource StandardButton}"
+                                Name="RepairButton"
+                                IsEnabled="False"
+                                Click="Click_Repair">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconRepair}" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="14"/>
-                                <TextBlock Text="REPAIR" VerticalAlignment="Center"/>
+                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="{StaticResource IconRepair}"
+                                           Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="14" />
+                                <TextBlock Text="REPAIR"
+                                           VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource StandardButton}" Name="EECCRButton" IsEnabled="False" Click="Click_EECCR">
+
+                        <Button Style="{StaticResource StandardButton}"
+                                Name="EECCRButton"
+                                IsEnabled="False"
+                                Click="Click_EECCR">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconEECCR}" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="14"/>
-                                <TextBlock Text="EECCRs" VerticalAlignment="Center"/>
+                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="{StaticResource IconEECCR}"
+                                           Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="14" />
+                                <TextBlock Text="EECCRs"
+                                           VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource StandardButton}" Name="LoadButton" IsEnabled="False" ToolTip="Load PRECs that are stored in a .corr file" Click="Click_Load">
+
+                        <Button Style="{StaticResource StandardButton}"
+                                Name="LoadButton"
+                                IsEnabled="False"
+                                ToolTip="Load PRECs that are stored in a .corr file"
+                                Click="Click_Load">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconLoad}" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="14"/>
-                                <TextBlock Text="LOAD" VerticalAlignment="Center"/>
+                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="{StaticResource IconLoad}"
+                                           Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="14" />
+                                <TextBlock Text="LOAD"
+                                           VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource StandardButton}" Name="CancelButton" IsEnabled="False" ToolTip="Cancel the current operation" Click="Click_Cancel" Background="#6B7280">
+
+                        <Button Style="{StaticResource StandardButton}"
+                                Name="CancelButton"
+                                IsEnabled="False"
+                                ToolTip="Cancel the current operation"
+                                Click="Click_Cancel"
+                                Background="#6B7280">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconCancel}" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="12"/>
-                                <TextBlock Text="CANCEL" VerticalAlignment="Center"/>
+                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           Text="{StaticResource IconCancel}"
+                                           Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="12" />
+                                <TextBlock Text="CANCEL"
+                                           VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
 
                     <Label Height="15" />
-                    <Label Style="{StaticResource StandardLabel}" Content="-- STATISTICS --" />
+
+                    <Label Style="{StaticResource StandardLabel}"
+                           Content="-- STATISTICS --" />
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconWarning}" Foreground="#F59E0B" VerticalAlignment="Center" Margin="4,0,8,0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="CORRUPTED" Grid.Row="0" Grid.Column="1" Padding="0" MinWidth="0" />
-                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="CorruptedLabel" Grid.Row="0" Grid.Column="2" FontWeight="Bold" HorizontalAlignment="Right" />
+                        <TextBlock Grid.Row="0"
+                                   Grid.Column="0"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Text="{StaticResource IconWarning}"
+                                   Foreground="#F59E0B"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,8,0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="CORRUPTED"
+                               Grid.Row="0"
+                               Grid.Column="1"
+                               Padding="0"
+                               MinWidth="0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="0"
+                               Name="CorruptedLabel"
+                               Grid.Row="0"
+                               Grid.Column="2"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Right" />
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconDevice}" Foreground="{DynamicResource ThemeTextBrush}" VerticalAlignment="Center" Margin="4,0,8,0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="STATIONS" Grid.Row="1" Grid.Column="1" Padding="0" MinWidth="0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="CorruptedStationsLabel" Grid.Row="1" Grid.Column="2" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Row="1"
+                                   Grid.Column="0"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Text="{StaticResource IconDevice}"
+                                   Foreground="{DynamicResource ThemeTextBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,8,0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="STATIONS"
+                               Grid.Row="1"
+                               Grid.Column="1"
+                               Padding="0"
+                               MinWidth="0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="0"
+                               Name="CorruptedStationsLabel"
+                               Grid.Row="1"
+                               Grid.Column="2"
+                               HorizontalAlignment="Right" />
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconConnection}" Foreground="{DynamicResource ThemeTextBrush}" VerticalAlignment="Center" Margin="4,0,8,0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="TRUNKS" Grid.Row="2" Grid.Column="1" Padding="0" MinWidth="0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="CorruptedTrunksLabel" Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Row="2"
+                                   Grid.Column="0"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Text="{StaticResource IconConnection}"
+                                   Foreground="{DynamicResource ThemeTextBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,8,0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="TRUNKS"
+                               Grid.Row="2"
+                               Grid.Column="1"
+                               Padding="0"
+                               MinWidth="0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="0"
+                               Name="CorruptedTrunksLabel"
+                               Grid.Row="2"
+                               Grid.Column="2"
+                               HorizontalAlignment="Right" />
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconVolume}" Foreground="{DynamicResource ThemeTextBrush}" VerticalAlignment="Center" Margin="4,0,8,0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="ANNOUNCEMENTS" Grid.Row="3" Grid.Column="1" Padding="0" MinWidth="0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="CorruptedAnnouncementsLabel" Grid.Row="3" Grid.Column="2" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Row="3"
+                                   Grid.Column="0"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Text="{StaticResource IconVolume}"
+                                   Foreground="{DynamicResource ThemeTextBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,8,0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="ANNOUNCEMENTS"
+                               Grid.Row="3"
+                               Grid.Column="1"
+                               Padding="0"
+                               MinWidth="0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="0"
+                               Name="CorruptedAnnouncementsLabel"
+                               Grid.Row="3"
+                               Grid.Column="2"
+                               HorizontalAlignment="Right" />
 
-                        <TextBlock Grid.Row="4" Grid.Column="0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="{StaticResource IconEdit}" Foreground="{DynamicResource ThemeTextBrush}" VerticalAlignment="Center" Margin="4,0,8,0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="MANUAL FIXES" Grid.Row="4" Grid.Column="1" Padding="0" MinWidth="0"/>
-                        <Label Style="{StaticResource StandardLabel}" Content="0" Name="ManualFixesLabel" Grid.Row="4" Grid.Column="2" FontWeight="Bold" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Row="4"
+                                   Grid.Column="0"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Text="{StaticResource IconEdit}"
+                                   Foreground="{DynamicResource ThemeTextBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,8,0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="MANUAL FIXES"
+                               Grid.Row="4"
+                               Grid.Column="1"
+                               Padding="0"
+                               MinWidth="0" />
+                        <Label Style="{StaticResource StandardLabel}"
+                               Content="0"
+                               Name="ManualFixesLabel"
+                               Grid.Row="4"
+                               Grid.Column="2"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Right" />
                     </Grid>
                 </StackPanel>
             </ScrollViewer>
         </Grid>
 
-        <StatusBar Style="{StaticResource StandardStatusBar}" Grid.Row="2">
+        <StatusBar Style="{StaticResource StandardStatusBar}"
+                   Grid.Row="2">
             <StatusBarItem Content="STATE:" />
-            <StatusBarItem Content="IDLE" Name="StateLabel" MinWidth="70" FontWeight="Bold" />
+            <StatusBarItem Content="IDLE"
+                           Name="StateLabel"
+                           MinWidth="70"
+                           FontWeight="Bold" />
             <Separator />
             <StatusBarItem Content="PROCESS:" />
-            <StatusBarItem Content="NONE" Name="ProcessLabel" MinWidth="120" />
+            <StatusBarItem Content="NONE"
+                           Name="ProcessLabel"
+                           MinWidth="120" />
             <Separator />
             <StatusBarItem Content="PROGRESS:" />
-            <StatusBarItem Content="-- / --" Name="ProgressLabel" MinWidth="95" />
+            <StatusBarItem Content="-- / --"
+                           Name="ProgressLabel"
+                           MinWidth="95" />
             <Separator />
             <StatusBarItem Content="RUNTIME:" />
-            <StatusBarItem Content="00:00:00" Name="RuntimeLabel" MinWidth="60" />
+            <StatusBarItem Content="00:00:00"
+                           Name="RuntimeLabel"
+                           MinWidth="60" />
 
             <StatusBarItem HorizontalAlignment="Right">
                 <StackPanel Orientation="Horizontal">
                     <StatusBarItem Content="TOOLSA:" />
-                    <StatusBarItem Content="DOWN" Name="ToolsAStateLabel" MinWidth="45" Foreground="#EF4444" FontWeight="Bold"/>
+                    <StatusBarItem Content="DOWN"
+                                   Name="ToolsAStateLabel"
+                                   MinWidth="45"
+                                   Foreground="#EF4444"
+                                   FontWeight="Bold" />
                     <Separator />
                     <StatusBarItem Content="DRCCD:" />
-                    <StatusBarItem Content="DOWN" Name="DRCCDStateLabel" MinWidth="45" Foreground="#EF4444" FontWeight="Bold"/>
+                    <StatusBarItem Content="DOWN"
+                                   Name="DRCCDStateLabel"
+                                   MinWidth="45"
+                                   Foreground="#EF4444"
+                                   FontWeight="Bold" />
                     <Separator />
                     <StatusBarItem Content="CM:" />
-                    <StatusBarItem Content="DOWN" Name="CMStateLabel" MinWidth="45" Foreground="#EF4444" FontWeight="Bold"/>
+                    <StatusBarItem Content="DOWN"
+                                   Name="CMStateLabel"
+                                   MinWidth="45"
+                                   Foreground="#EF4444"
+                                   FontWeight="Bold" />
                 </StackPanel>
             </StatusBarItem>
         </StatusBar>
