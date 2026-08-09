@@ -12,11 +12,14 @@ public sealed class WebUiAssistantServiceTests
     [Fact]
     public async Task AskAsync_WhenApiKeyIsMissing_DoesNotSendRequest()
     {
-        var originalKey = Environment.GetEnvironmentVariable("WEBAI_KEY");
+        var originalKey =
+            Environment.GetEnvironmentVariable("WEBAI_KEY");
 
         try
         {
-            Environment.SetEnvironmentVariable("WEBAI_KEY", null);
+            Environment.SetEnvironmentVariable(
+                "WEBAI_KEY",
+                null);
 
             var handler = new RecordingHandler();
             using var client = new HttpClient(handler);
@@ -29,19 +32,24 @@ public sealed class WebUiAssistantServiceTests
                 CreateRequest());
 
             Assert.False(response.Succeeded);
-            Assert.Contains("WEBAI_KEY is not set", response.ErrorMessage);
+            Assert.Contains(
+                "WEBAI_KEY is not set",
+                response.ErrorMessage);
             Assert.False(handler.RequestWasSent);
         }
         finally
         {
-            Environment.SetEnvironmentVariable("WEBAI_KEY", originalKey);
+            Environment.SetEnvironmentVariable(
+                "WEBAI_KEY",
+                originalKey);
         }
     }
 
     [Fact]
     public async Task AskAsync_WhenServiceIsDisabled_DoesNotSendRequest()
     {
-        var originalKey = Environment.GetEnvironmentVariable("WEBAI_KEY");
+        var originalKey =
+            Environment.GetEnvironmentVariable("WEBAI_KEY");
 
         try
         {
@@ -59,7 +67,9 @@ public sealed class WebUiAssistantServiceTests
                     "https://gateway.webai.avaya.com/chat/completions"
             };
 
-            var service = new WebUiAssistantService(client, settings);
+            var service = new WebUiAssistantService(
+                client,
+                settings);
 
             var response = await service.AskAsync(
                 CreateRequest());
@@ -72,14 +82,17 @@ public sealed class WebUiAssistantServiceTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("WEBAI_KEY", originalKey);
+            Environment.SetEnvironmentVariable(
+                "WEBAI_KEY",
+                originalKey);
         }
     }
 
     [Fact]
     public async Task AskAsync_SuccessfulResponse_ReturnsAnswer()
     {
-        var originalKey = Environment.GetEnvironmentVariable("WEBAI_KEY");
+        var originalKey =
+            Environment.GetEnvironmentVariable("WEBAI_KEY");
 
         try
         {
@@ -142,14 +155,80 @@ public sealed class WebUiAssistantServiceTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("WEBAI_KEY", originalKey);
+            Environment.SetEnvironmentVariable(
+                "WEBAI_KEY",
+                originalKey);
+        }
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenContextIsTooLarge_DoesNotSendRequest()
+    {
+        var originalKey =
+            Environment.GetEnvironmentVariable("WEBAI_KEY");
+
+        try
+        {
+            Environment.SetEnvironmentVariable(
+                "WEBAI_KEY",
+                "test-key-not-a-real-key");
+
+            var handler = new RecordingHandler();
+            using var client = new HttpClient(handler);
+
+            var settings = new AssistantSettings
+            {
+                Enabled = true,
+                MaximumContextBytes = 10
+            };
+
+            var service = new WebUiAssistantService(
+                client,
+                settings);
+
+            var response = await service.AskAsync(
+                new AssistantRequest
+                {
+                    Question = "Explain this record.",
+                    CorrelationId = "oversized-context-test",
+                    Context = new AssistantContext
+                    {
+                        PrecType = "PR_EXT",
+                        Evidence =
+                        [
+                            new AssistantEvidence
+                            {
+                                Type = "Test",
+                                Content =
+                                    "This context is intentionally too large."
+                            }
+                        ]
+                    }
+                });
+
+            Assert.False(response.Succeeded);
+            Assert.Contains(
+                "context is too large",
+                response.ErrorMessage,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(
+                "oversized-context-test",
+                response.CorrelationId);
+            Assert.False(handler.RequestWasSent);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                "WEBAI_KEY",
+                originalKey);
         }
     }
 
     [Fact]
     public async Task AskAsync_HttpFailure_ReturnsFailureWithoutThrowing()
     {
-        var originalKey = Environment.GetEnvironmentVariable("WEBAI_KEY");
+        var originalKey =
+            Environment.GetEnvironmentVariable("WEBAI_KEY");
 
         try
         {
@@ -185,7 +264,9 @@ public sealed class WebUiAssistantServiceTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("WEBAI_KEY", originalKey);
+            Environment.SetEnvironmentVariable(
+                "WEBAI_KEY",
+                originalKey);
         }
     }
 

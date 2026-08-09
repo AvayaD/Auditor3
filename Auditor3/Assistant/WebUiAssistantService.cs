@@ -87,6 +87,18 @@ public sealed class WebUiAssistantService : IAssistantService
             request.Context ?? new AssistantContext(),
             SerializerOptions);
 
+        var contextBytes = Encoding.UTF8.GetByteCount(contextJson);
+
+        if (_settings.MaximumContextBytes > 0 &&
+            contextBytes > _settings.MaximumContextBytes)
+        {
+            return Failure(
+                $"Assistant context is too large: {contextBytes} bytes " +
+                $" exceeds the configured limit of " +
+                $"{_settings.MaximumContextBytes} bytes.",
+                request.CorrelationId);
+        }
+
         var userContent = new StringBuilder()
             .AppendLine(request.Question)
             .AppendLine()
