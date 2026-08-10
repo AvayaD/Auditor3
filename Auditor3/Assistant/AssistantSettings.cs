@@ -13,6 +13,13 @@ public sealed class AssistantSettings
     public bool Enabled { get; init; }
 
     /// <summary>
+    /// Controls which cumulative assistant capabilities are permitted.
+    /// Disabled is the safe default.
+    /// </summary>
+    public AssistantExecutionMode ExecutionMode { get; init; } =
+        AssistantExecutionMode.Disabled;
+
+    /// <summary>
     /// Approved webui.avaya.com service endpoint.
     /// This must be supplied through approved configuration.
     /// </summary>
