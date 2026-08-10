@@ -2698,3 +2698,313 @@ Document WebUiAssistantService as an implemented adapter prototype.
 Update the test count and test files.
 State clearly that no WPF assistant UI is wired in.
 State that service-contract/security approval granted
+
+---
+
+## Current Agent Direction
+
+The long-term goal is an autonomous Auditor3 engineering assistant. The
+assistant may request approved Auditor3 capabilities and use returned data to
+decide what investigation should happen next.
+
+The assistant does not receive unrestricted shell, SSH, CM, SAT, TCM, or repair
+access. Auditor3 validates every capability request and enforces the active
+execution mode.
+
+### Cumulative execution modes
+
+Modes are listed from most restrictive to least restrictive. Each mode
+includes all capabilities of its predecessor and adds capabilities.
+
+Disabled
+  ↓
+OfflineReadOnly
+  ↓
+ReadOnly
+  ↓
+LiveReadOnly
+  ↓
+LabAssisted
+
+#### Disabled
+
+No assistant functionality is available.
+
+#### OfflineReadOnly
+
+Includes Disabled capabilities, plus:
+
+- Explain supplied context.
+- Explain selected raw PREC data.
+- Explain supplied layouts, fields, evidence, and audit results.
+- Perform no network, DRCCD, CM, collection, or repair operations.
+
+#### ReadOnly
+
+Includes OfflineReadOnly capabilities, plus:
+
+- Request approved DRCCD `precstruct` data.
+- Request approved DRCCD `findprecs` mappings.
+- Request related PREC data and audit evidence.
+- Explain audit failures using returned authoritative evidence.
+- Make no CM translation changes.
+
+#### LiveReadOnly
+
+Includes ReadOnly capabilities, plus:
+
+- Request approved read-only operations against live systems.
+- Request approved live data collection where permitted.
+- Analyze live collection results.
+
+LiveReadOnly may never execute fix scripts, TCM repairs, SAT changes, or
+operations that modify live CM translations.
+
+#### LabAssisted
+
+Includes LiveReadOnly capabilities, plus:
+
+- Request collection on a designated lab.
+- Request Auditor3 audits on that lab.
+- Request deterministic fix-script generation.
+- Request approved fix-script execution on that lab.
+- Request re-collection and verification.
+
+State-changing lab operations require explicit engineer approval and validated
+lab targeting.
+
+
+### Autonomous capability requests
+
+The assistant may request multiple approved capabilities in sequence. It may
+use investigation results to decide what capability to request next.
+
+Initial capability categories include:
+
+- SelectedPrecContext
+- PrecLayout
+- FindPrecsMapping
+- RelatedPrecData
+- AuditFailureEvidence
+- DeterministicRepairExplanation
+- LabCollection
+- LabAudit
+- LabFixScriptGeneration
+- LabRepairExecution
+- LabVerification
+
+The assistant requests named capabilities with structured parameters. It does
+not submit arbitrary shell commands.
+
+Auditor3 validates every request before execution, including:
+
+- Capability name.
+- Required parameters.
+- Target system.
+- Active execution mode.
+- Lab or live state.
+- Blacklist rules.
+- Timeout and cancellation limits.
+- Whether explicit engineer approval is required.
+
+The assistant may be autonomous in choosing the next approved investigation
+step, but Auditor3 remains responsible for policy enforcement and execution.
+
+### DRCCD investigation capabilities
+
+Approved read-only DRCCD operations include:
+
+    ./precstruct <prec>
+    ./findprecs <action> <object> <qualifier>
+
+The assistant may request any legitimate action, object, and qualifier pair
+supported by the DRCCD script. The initial blacklist is empty. Dangerous
+pairs may be added later without changing the capability boundary.
+
+Auditor3 invokes only the approved scripts. The assistant cannot select an
+executable, script path, or arbitrary shell command.
+
+Legacy DRCCD parameter syntax must be preserved. Parameter handling must be
+designed for the actual older DRCCD shell rather than assumed from a modern
+shell implementation.
+
+Action, object, and qualifier values remain structured values. Auditor3 must
+pass them through the controlled DRCCD integration and preserve valid
+parameter punctuation required by the legacy scripts.
+
+Raw command output should be retained as evidence and accompanied by
+structured fields where parsing is reliable:
+
+- Requested action.
+- Requested object.
+- Requested qualifier.
+- AREC.
+- DRECs.
+- PRECs.
+- Source or release information.
+- Retrieval status.
+- Raw output.
+
+The DRCCD shell session should support multiple approved read-only requests
+during one analysis operation. Shell lifetime and cleanup must be owned by
+the higher-level Auditor3 analysis operation.
+
+
+### Audit-failure investigation
+
+Auditor3 remains authoritative for:
+
+- Audit code.
+- Failure condition.
+- Records involved.
+- Deterministic repair output.
+- CM or lab state.
+
+The assistant may request additional evidence, including:
+
+1. Involved PREC types.
+2. Related raw PREC records.
+3. AREC/DREC/PREC mappings.
+4. C structure declarations.
+5. GDB ptype /o layouts.
+6. Field offsets and sizes.
+7. Existing deterministic repair recommendations.
+8. Lab verification results where permitted.
+
+The assistant may use the returned evidence to explain why an audit failed.
+It must distinguish:
+
+- Authoritative Auditor3 facts.
+- Deterministic interpretations.
+- Assistant explanations.
+- Unknown or unavailable information.
+
+The assistant must not invent field meanings, offsets, sizes, relationships,
+audit results, CM state, or repair commands.
+
+A typical investigation may be:
+
+    Audit failure
+      ↓
+    Identify involved PREC types
+      ↓
+    Request related PREC data
+      ↓
+    Request findprecs mappings
+      ↓
+    Request precstruct output for involved PRECs
+      ↓
+    Parse layouts and field metadata
+      ↓
+    Explain the failure using authoritative evidence
+
+### Lab orchestration
+
+Lab orchestration is a controlled capability. It requires a designated lab
+target and must not infer that a system is a lab merely from an IP address or
+user prompt.
+
+A lab workflow may be:
+
+    Collect lab PREC data
+      ↓
+    Run Auditor3 audit
+      ↓
+    Identify failed audits and involved PRECs
+      ↓
+    Retrieve layouts and mappings
+      ↓
+    Explain the failure
+      ↓
+    Generate deterministic fix script
+      ↓
+    Show the proposed lab operation
+      ↓
+    Require explicit engineer approval
+      ↓
+    Execute only on the designated lab
+      ↓
+    Re-collect and verify
+
+AI-generated repair text is never executed directly. Lab repair execution must
+use existing Auditor3 repair mechanisms after policy validation and explicit
+approval.
+
+
+### Permanent live-system rule
+
+No execution mode may execute assistant-requested repairs or modify
+translations on a live CM system.
+
+This restriction applies regardless of:
+
+- Assistant response content.
+- User prompt wording.
+- Configured assistant mode.
+- WebAI response.
+- Suggested command text.
+- Capability-request sequence.
+
+AI-generated command text is advisory unless it passes through an approved
+Auditor3 capability and the active execution policy.
+
+### Architecture direction
+
+The intended dependency direction is:
+
+    Assistant service
+      ↓ structured capability request
+    Assistant coordinator or orchestrator
+      ↓ policy and target validation
+    Auditor3 capability provider
+      ├── local context provider
+      ├── DRCCD read-only provider
+      ├── layout provider
+      ├── mapping provider
+      ├── audit evidence provider
+      └── lab workflow provider
+      ↓
+    Existing Auditor3 connections, parser, auditor, fixer, and lab workflow
+
+The assistant must not receive unrestricted access to:
+
+- CMConnection.
+- DRCCDConnection.
+- ShellStream.
+- SshClient.
+- SAT command execution.
+- TCM command execution.
+- Repair execution.
+
+Those operations belong behind explicitly governed Auditor3 capabilities.
+
+### Current implementation status
+
+Implemented:
+
+- Local assistant service.
+- WebAI adapter prototype.
+- Assistant coordinator and redaction.
+- Single-PREC manual selection.
+- Raw PREC context display.
+- Layout models and parser foundation.
+- Dark/light assistant UI integration.
+- Search and manual selected-PREC workflow.
+- Standard WPF scrollbars.
+
+Not yet implemented:
+
+- Capability request and result models.
+- Execution-mode policy enforcement.
+- Autonomous multi-step orchestration.
+- DRCCD precstruct provider.
+- DRCCD findprecs provider.
+- Audit-failure PREC discovery.
+- Layout retrieval for all involved PRECs.
+- Lab collection capability.
+- Lab audit orchestration.
+- Lab repair approval and execution workflow.
+- Post-repair lab verification.
+
+The next implementation milestone is to define capability contracts and
+execution-policy models before adding DRCCD shell integration.
