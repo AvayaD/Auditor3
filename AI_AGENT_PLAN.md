@@ -805,3 +805,41 @@ Not yet implemented:
 
 The next implementation milestone is to define capability contracts and
 execution-policy models before adding DRCCD shell integration.
+
+---
+
+## Current Implementation Snapshot
+
+Implemented and tested:
+
+- Execution modes and capability policy.
+- Capability request/result models.
+- Capability provider and dispatcher contracts.
+- Selected-PREC capability provider.
+- DRCCD `precstruct` provider contract.
+- PREC-name validation.
+- Legacy DRCCD prompt matching.
+- One-shot DRCCD `precstruct` shell-client abstraction.
+- Single-PREC selection and raw-context display.
+
+Current validation: 76 tests passed, 0 failures, 0 warnings.
+
+
+## Remaining Implementation Work
+
+The following work remains:
+
+- Wire a production `IDrccdShellFactory` to `DRCCDConnection`.
+- Implement the real DRCCD shell adapter.
+- Add the `findprecs` mapping provider.
+- Add a reusable multi-command DRCCD analysis session.
+- Connect capability requests to the assistant coordinator.
+- Add audit-failure investigation orchestration.
+- Retrieve layouts for all PRECs involved in an audit failure.
+- Add lab collection, audit, repair-approval, repair-execution, and verification workflows.
+- Enforce live-system repair prohibition at every execution boundary.
+
+The current DRCCD client is intentionally one-shot:
+one validated PREC request creates one shell, retrieves one `precstruct`
+result, and disposes that shell. Reusable multi-command sessions are a
+future milestone.
