@@ -296,6 +296,9 @@
                         </StackPanel>
                     </CheckBox>
 
+                    <Button Style="{StaticResource StandardButton}"
+                            Content="OPEN ASSISTANT"
+                            Click="Click_OpenAssistant" />
                     <StackPanel x:Name="AssistantOptionsPanel"
                                 Orientation="Vertical"
                                 Visibility="Collapsed">

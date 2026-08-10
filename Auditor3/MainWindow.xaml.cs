@@ -58,7 +58,7 @@ namespace Auditor3
         // UPDATED: Now sets the ThemeInputBrush color for both modes
         private void Click_ToggleTheme(object sender, RoutedEventArgs args)
         {
-            var resources = this.Resources;
+            var resources = Application.Current.Resources;
 
             if (DarkModeToggle.IsChecked == true)
             {
@@ -517,6 +517,44 @@ namespace Auditor3
             preclist.ShowDialog();
         }
 
+        private void Click_OpenAssistant(
+            object sender,
+            RoutedEventArgs args)
+        {
+            var settings = new AssistantSettings
+            {
+                Enabled = true
+            };
+
+            var service = AssistantServiceFactory.Create(
+                AssistantMode.Local,
+                settings);
+
+            var coordinator = new AssistantCoordinator(
+                service,
+                new AssistantRedactor(),
+                settings);
+
+            var context = new AssistantContext
+            {
+                ApplicationVersion = Globals.VERSION(),
+                CmRelease = Globals.CM_RELEASE.ToString(),
+                PrecType = "PR_EXT",
+                StructureName = "pr_ext",
+                CompiledSize = 32,
+                DumpSize = 32,
+                RecordSizeStatus = "Match"
+            };
+
+            var assistant = new AssistantWindow(
+                coordinator,
+                context)
+            {
+                Owner = this
+            };
+
+            assistant.ShowDialog();
+        }
         private void Click_UserData(object sender, RoutedEventArgs args)
         {
             var collect = new Task(CollectUserData);
