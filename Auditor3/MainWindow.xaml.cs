@@ -21,7 +21,7 @@ namespace Auditor3
         private string LoadPRECsFile;
         private string OutputText;
         private object OutputLock;
-
+        private AssistantContext _selectedAssistantContext;
         public MainWindow()
         {
             InitializeComponent();
@@ -535,16 +535,14 @@ namespace Auditor3
                 new AssistantRedactor(),
                 settings);
 
-            var context = new AssistantContext
-            {
-                ApplicationVersion = Globals.VERSION(),
-                CmRelease = Globals.CM_RELEASE.ToString(),
-                PrecType = "PR_EXT",
-                StructureName = "pr_ext",
-                CompiledSize = 32,
-                DumpSize = 32,
-                RecordSizeStatus = "Match"
-            };
+            var context = _selectedAssistantContext ??
+                new AssistantContext
+                {
+                    ApplicationVersion = Globals.VERSION(),
+                    CmRelease = Globals.CM_RELEASE.ToString(),
+                    RecordSizeStatus = "Unknown"
+                };
+
 
             var assistant = new AssistantWindow(
                 coordinator,
@@ -555,6 +553,118 @@ namespace Auditor3
 
             assistant.ShowDialog();
         }
+
+        private void Click_FindPrec(
+            object sender,
+            RoutedEventArgs args)
+        {
+            var searchText = PrecSearchBox.Text?.Trim();
+
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                AddStatus("Enter a PREC type, UID, or search value.");
+                PrecSearchBox.Focus();
+                return;
+            }
+
+            var start = DataBox.Text.IndexOf(
+                searchText,
+                StringComparison.OrdinalIgnoreCase);
+
+            if (start < 0)
+            {
+                AddStatus($"No PREC match found for: {searchText}");
+                return;
+            }
+
+            var lineStart = DataBox.Text.LastIndexOf(
+                '\n',
+                start);
+
+            lineStart = lineStart < 0
+                ? 0
+                : lineStart + 1;
+
+            var lineEnd = DataBox.Text.IndexOf(
+                '\n',
+                start);
+
+            lineEnd = lineEnd < 0
+                ? DataBox.Text.Length
+                : lineEnd;
+
+            DataBox.Focus();
+            DataBox.Select(
+                lineStart,
+                lineEnd - lineStart);
+
+            DataBox.ScrollToLine(
+                DataBox.GetLineIndexFromCharacterIndex(lineStart));
+                AddStatus($"PREC match found for: {searchText}");
+        }
+
+        private void Click_UseSelectedPrec(
+            object sender,
+            RoutedEventArgs args)
+        {
+            var selectedPrec = DataBox.SelectedText;
+
+            if (string.IsNullOrWhiteSpace(selectedPrec))
+            {
+                AddStatus("Select one or more PREC lines first.");
+                DataBox.Focus();
+                return;
+            }
+
+            var firstLine = selectedPrec
+                .Split(new[] { "\r\n", "\n" },
+                    StringSplitOptions.RemoveEmptyEntries)[0]
+                .Trim();
+
+            var fields = firstLine.Split(
+                new[] { ' ', '\t' },
+                StringSplitOptions.RemoveEmptyEntries);
+
+            var precType = fields.Length > 0
+                ? fields[0]
+                : "UNKNOWN";
+
+            var settings = new AssistantSettings
+            {
+                Enabled = true
+            };
+
+            var service = AssistantServiceFactory.Create(
+                AssistantMode.Local,
+                settings);
+
+            var coordinator = new AssistantCoordinator(
+                service,
+                new AssistantRedactor(),
+                settings);
+
+            var context = new AssistantContext
+            {
+                ApplicationVersion = Globals.VERSION(),
+                CmRelease = Globals.CM_RELEASE.ToString(),
+                PrecType = precType,
+                StructureName = precType.ToLowerInvariant(),
+                RawPrec = selectedPrec,
+                RecordSizeStatus = "Unknown"
+            };
+
+            _selectedAssistantContext = context;
+
+            var assistant = new AssistantWindow(
+                coordinator,
+                context)
+            {
+                Owner = this
+            };
+
+            assistant.ShowDialog();
+        }
+
         private void Click_UserData(object sender, RoutedEventArgs args)
         {
             var collect = new Task(CollectUserData);

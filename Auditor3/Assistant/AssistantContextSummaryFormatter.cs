@@ -45,6 +45,19 @@ public static class AssistantContextSummaryFormatter
         output.AppendLine(
             $"Proposed fixes   : {context.ProposedFixes.Count}");
 
+        output.AppendLine();
+        output.AppendLine("Raw PREC");
+        output.AppendLine("========");
+
+        if (string.IsNullOrWhiteSpace(context.RawPrec))
+        {
+            output.AppendLine("No raw PREC selected.");
+        }
+        else
+        {
+            output.AppendLine(context.RawPrec);
+        }
+
         return output.ToString().TrimEnd();
     }
 
