@@ -123,7 +123,7 @@ public partial class AssistantWindow : Window
     private void SetRequestState(bool isRequesting)
     {
         AskButton.IsEnabled = !isRequesting;
-        CancelButton.IsEnabled = isRequesting;
+        CancelButton.IsEnabled = true;
         QuestionBox.IsEnabled = !isRequesting;
         Cursor = isRequesting
             ? System.Windows.Input.Cursors.Wait

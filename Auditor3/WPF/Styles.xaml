@@ -358,7 +358,10 @@
                             BorderThickness="{TemplateBinding BorderThickness}" 
                             Background="{TemplateBinding Background}" 
                             SnapsToDevicePixels="True">
-                        <ScrollViewer x:Name="PART_ContentHost" Focusable="false" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      Focusable="false"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto"/>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsFocused" Value="True">

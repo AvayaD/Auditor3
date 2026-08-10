@@ -60,6 +60,8 @@
                      Grid.Row="1"
                      Style="{StaticResource FillTextBox}"
                      IsReadOnly="True"
+                     IsReadOnlyCaretVisible="True"
+                     Focusable="True"
                      TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto"
                      HorizontalScrollBarVisibility="Auto" />
@@ -90,7 +92,8 @@
                     Style="{StaticResource StandardButton}"
                     Content="CANCEL"
                     Click="Click_Cancel"
-                    IsEnabled="False" />
+                    IsEnabled="True" />
+
         </Grid>
     </Grid>
 </Window>
