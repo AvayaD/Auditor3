@@ -2,25 +2,24 @@
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Renci.SshNet;
 
 namespace Auditor3;
 
 /// <summary>
-/// Controlled adapter over the legacy DRCCD SSH.NET shell stream.
+/// Controlled adapter over the legacy DRCCD shell.
 ///
-/// The underlying shell stream is not exposed to callers. Output is read
-/// until the observed DRCCD prompt appears.
+/// The underlying shell is not exposed to callers. Output is read until the
+/// observed DRCCD prompt appears.
 /// </summary>
 internal sealed class DrccdShellStreamAdapter : IDrccdShell
 {
     private static readonly TimeSpan PollInterval =
         TimeSpan.FromMilliseconds(25);
 
-    private readonly ShellStream _shell;
+    private readonly IDrccdRawShell _shell;
     private bool _disposed;
 
-    public DrccdShellStreamAdapter(ShellStream shell)
+    public DrccdShellStreamAdapter(IDrccdRawShell shell)
     {
         _shell = shell ??
             throw new ArgumentNullException(nameof(shell));
@@ -75,14 +74,13 @@ internal sealed class DrccdShellStreamAdapter : IDrccdShell
                     }
                 }
             }
+            else if (DateTime.UtcNow - start >= timeout)
+            {
+                throw new TimeoutException(
+                    "Timed out waiting for the DRCCD prompt.");
+            }
             else
             {
-                if (DateTime.UtcNow - start >= timeout)
-                {
-                    throw new TimeoutException(
-                        "Timed out waiting for the DRCCD prompt.");
-                }
-
                 await Task.Delay(
                         PollInterval,
                         cancellationToken)

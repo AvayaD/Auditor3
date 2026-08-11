@@ -39,8 +39,10 @@ internal sealed class DrccdShellFactory : IDrccdShellFactory
                 "DRCCD shell could not be created.");
         }
 
+        var rawShell = new DrccdRawShellStream(shell);
+
         IDrccdShell adapter =
-            new DrccdShellStreamAdapter(shell);
+            new DrccdShellStreamAdapter(rawShell);
 
         return Task.FromResult(adapter);
     }
