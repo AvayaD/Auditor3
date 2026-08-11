@@ -843,3 +843,69 @@ The current DRCCD client is intentionally one-shot:
 one validated PREC request creates one shell, retrieves one `precstruct`
 result, and disposes that shell. Reusable multi-command sessions are a
 future milestone.
+
+---
+
+## Long-Term Autonomous Lab Engineering Agent
+
+The initial assistant release is read-only and advisory. The approved long-term objective is a governed, graph-driven autonomous Auditor3 engineering agent that can investigate and remediate designated labs through explicit capabilities.
+
+The engineer continues to ask natural-language questions in AssistantWindow. The agent may request approved capabilities, but Auditor3 validates and executes every capability.
+
+### Autonomous investigation loop
+
+```text
+Engineer question
+      |
+Build investigation context
+      |
+Collect designated-lab data
+      |
+Run required Auditor3 audits
+      |
+Identify authoritative faults
+      |
+Request approved evidence
+      |
+Analyze evidence
+      |
+Generate deterministic repair plan
+      |
+Require explicit approval for state-changing lab operations
+      |
+Execute only on the designated lab
+      |
+Re-collect and re-audit
+      |
+Verify or terminate
+```
+
+### Future capability groups
+
+Read-only capabilities may include PREC layouts, findprecs mappings, related PREC data, audit-failure evidence, DRCCD code inspection, DRCCD error-log retrieval, ToolsA error-log retrieval, and approved TCM diagnostics.
+
+Designated-lab capabilities may include lab collection, lab audit, deterministic fix-script generation, approved lab repair execution, and post-operation verification.
+
+The assistant must request structured capabilities. It must never receive unrestricted shell, SSH, CM, DRCCD, TCM, or ToolsA access.
+
+### Verified-clean completion
+
+The agent must not stop solely because a numeric fault count is zero. Completion requires required collection and audit categories to finish successfully, no blocking faults or unresolved manual fixes, no parser or collection errors, validated lab targeting, and completed post-operation verification.
+
+Possible terminal states include VerifiedClean, CleanWithWarnings, BlockedByManualFix, ApprovalRequired, CollectionFailed, AuditIncomplete, InvestigationLimitReached, and TargetValidationFailed.
+
+### Permanent safety rules
+
+- Live repair and live CM translation modification are permanently prohibited.
+- State-changing operations require LabAssisted mode, validated designated-lab targeting, explicit engineer approval, and post-operation verification.
+- AI-generated command text is never executed directly.
+- Deterministic Auditor3 audit and repair logic remains authoritative.
+- Every autonomous loop has bounded request, iteration, duration, retry, context, evidence, and repair-operation limits.
+
+### Current implementation boundary
+
+Implemented: capability policy and dispatcher, selected-PREC context, PREC layout provider, one-shot DRCCD precstruct client, production DRCCD shell adapter, AssistantWindow, coordinator, local service, WebAI adapter prototype, redaction boundary, and automated tests.
+
+Still required: findprecs client and provider, structured WebAI capability requests, response validation, investigation graph orchestration, designated-lab validation, lab collection and audit capabilities, approved TCM and ToolsA boundaries, DRCCD code and log providers, lab repair approval and execution, post-repair verification, and production security review.
+
+This roadmap does not authorize capabilities that have not been implemented, tested, reviewed, and approved.
